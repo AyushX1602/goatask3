@@ -1,0 +1,31 @@
+# Environments
+.venv/
+__pycache__/
+*.pyc
+
+# Secrets
+.env
+
+# Model binaries (fetched by scripts/fetch_models.py, verified by sha256)
+models/
+
+# HTTP response cache (rules.md R-04)
+.cache/
+
+# Run artifacts — selectively committed, see rules.md git conventions.
+# Raw provider dumps and probe photos are NOT committed by default;
+# add specific files under runs/ explicitly when preparing a demo commit.
+runs/*/raw/
+runs/*/probe.png
+
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/*/31337/
+
+# Calibration pair images (may contain real faces — never committed raw)
+calibration/pairs/*/
+
+# OS / editor
+.DS_Store
+Thumbs.db

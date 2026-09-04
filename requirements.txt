@@ -1,0 +1,24 @@
+# Pinned per rules.md engineering conventions — no open ranges.
+# Every entry here has a prebuilt wheel for Windows / CPython 3.12 (verified 5 Sep 2026).
+
+# Face core
+onnxruntime==1.29.0
+opencv-python==5.0.0.93
+numpy==2.5.2
+Pillow==12.3.0
+
+# Perceptual hash for candidate dedupe
+ImageHash==4.3.2
+
+# Networking
+requests==2.34.2
+httpx==0.28.1
+websockets==17.1
+
+# CLI + console output (recording deliverable, see rules.md)
+typer==0.27.2
+rich==15.0.0
+
+# Config + retries
+python-dotenv==1.2.3
+tenacity==9.1.4
