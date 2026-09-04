@@ -29,5 +29,19 @@ def version() -> None:
     console.print(get_config())
 
 
+@app.command()
+def serve(host: str = "127.0.0.1", port: int = 8000) -> None:
+    """Launch the local demo UI (architecture.md 5a, prd.md G8/S13).
+
+    Local only, no auth — a visualization layer for the recording, not a
+    hosted service. Binds to 127.0.0.1 by default; do not expose this
+    beyond localhost.
+    """
+    import uvicorn
+
+    console.print(f"[bold green]face-chain-verify demo UI[/] -> http://{host}:{port}")
+    uvicorn.run("webapp.server:app", host=host, port=port, reload=False)
+
+
 if __name__ == "__main__":
     app()

@@ -45,12 +45,13 @@ This is the primary user. There is no second user in the 3-day window.
 | G5 | Re-verify a past result against the on-chain record, and prove a negative | The graded part of requirement 3 |
 | G6 | Runnable by a judge who clones the repo, with no paid account | Supports "how to run it" |
 | G7 | Never publish or persist a recoverable biometric template | Ethics, legal, and a scoring differentiator |
+| G8 | A local browser page that shows the judge the probe face, the candidate table, and the match verdict as it happens | Makes the pipeline legible on camera without narrating every line of terminal output |
 
 ## 5. Non-goals
 
 Explicitly out of scope. Do not build these, even if there is time.
 
-- Web UI, dashboard, or hosted API
+- **Amended 5 Sep 2026:** a thin local demo UI is now in scope — see G8 and S13. This is a visualization layer for the recording, not a product. It calls the same pipeline code as the CLI; it does not introduce a second implementation of anything. Still out of scope: hosting it publicly, user accounts, or treating it as a deliverable in its own right.
 - User accounts, auth, multi-tenancy
 - Production deployment or CI/CD beyond a lint + test job
 - Mobile app
@@ -77,6 +78,7 @@ The project ships when all of these are demonstrably true. "Demonstrably" means 
 | S10 | A judge can run the pipeline with zero API keys via the Bluesky provider | README quickstart |
 | S11 | The accept threshold is derived from a committed ROC curve, not hardcoded | `calibration/` |
 | S12 | No embedding, and no reversible derivative of one, appears in any committed artifact or on chain | Code review + `rules.md` R-01 |
+| S13 | Opening `localhost` shows a webcam capture, the aligned probe crop, a liveness verdict, and a candidate table with scores and accept/reject reasons, using the same run data as the CLI | Manual check + screenshot in `runs/` |
 
 ## 7. Requirement traceability
 

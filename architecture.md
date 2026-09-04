@@ -9,12 +9,13 @@ This document covers structure: components, boundaries, data flow, and stack dec
 ## 1. System shape
 
 ```
-                        ┌──────────────────────────────┐
-                        │        cli.py (typer)        │
-                        │  scan  search  anchor        │
-                        │  verify  calibrate  run-all  │
-                        └──────────────┬───────────────┘
-                                       │
+                        ┌──────────────────────────────┐        ┌──────────────────────┐
+                        │        cli.py (typer)        │        │  webapp/ (FastAPI)   │
+                        │  scan  search  anchor        │        │  same pipeline calls │
+                        │  verify  calibrate  run-all  │        │  static/index.html   │
+                        └──────────────┬───────────────┘        └──────────┬───────────┘
+                                       │                                   │
+                                       └─────────────────┬─────────────────┘
       ┌────────────────────────────────┼────────────────────────────────┐
       ▼                                ▼                                ▼
 ┌───────────┐               ┌───────────────────┐            ┌──────────────────┐
@@ -166,6 +167,26 @@ class SearchProvider(Protocol):
 | Primary chain | Base Sepolia (84532) | Live faucet, ~2 s blocks, public explorer | Polygon Amoy — official faucet retired, public RPC deprecated. Ethereum Sepolia — mid-transition, support winding down |
 | Second anchor | OpenTimestamps → Bitcoin mainnet | Free, no wallet, permanent, independent chain | — |
 | Offline chain | Anvil | Demo cannot fail on RPC flake | Ganache — unmaintained |
+
+## 5a. Local demo UI (amended 5 Sep 2026, prd.md G8/S13)
+
+A thin FastAPI app under `webapp/` that calls the exact same `pipeline.*` functions the CLI calls — `face/`, `search/`, `verify/`. No duplicate logic, no separate scoring path. Its only job is to make the run legible on a screen for the recording.
+
+```
+webapp/
+├─ server.py          FastAPI app, 3 endpoints, in-memory run state
+├─ static/
+│   ├─ index.html      webcam capture (getUserMedia) + candidate table
+│   └─ app.js          fetch() calls to the endpoints below, no framework
+```
+
+| Endpoint | Calls | Returns |
+|---|---|---|
+| `POST /api/scan` | `face.detect`, `face.align`, `face.embed`, `face.liveness` | aligned crop (base64 PNG), liveness verdict, embedding provenance hash (never the vector — R-01) |
+| `POST /api/search` | `search.orchestrator.gather`, `verify.matcher` | ranked candidate list: score, source, domain, decision, reason — the same fields as the `rich` CLI table |
+| `GET /api/run/{id}` | reads `runs/<id>/` | full run for redisplay |
+
+Runs on `127.0.0.1` only, no auth, single local user — acceptable for a local demo tool, called out explicitly in the README as not suitable for any network-exposed deployment. It is not a second implementation to maintain: if `orchestrator.gather` changes shape, the UI breaks loudly (a Python import error) rather than silently drifting from the CLI.
 
 ## 6. Directory layout
 

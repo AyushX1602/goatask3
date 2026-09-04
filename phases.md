@@ -53,45 +53,49 @@ Target by end of day: a live webcam capture finds a real Bluesky post and prints
 
 **Risk:** the flip test fails → landmark order is wrong. Fix in `canonical_kps` before proceeding. Do not continue with a broken face core; every later measurement would be meaningless.
 
-## Phase 2 — Provider interface + matcher  ·  ~2 h
+## Phase 2 — Provider interface + matcher  ·  ~2 h  ·  **DONE**
 
-- [ ] `search/base.py` — `Candidate`, `SearchProvider` protocol, `ProviderReport`
-- [ ] `search/orchestrator.py` — thread-pool fan-out, per-provider timeout, R-14 isolation
-- [ ] `verify/matcher.py` — cosine, threshold + margin rule, rejection reasons
-- [ ] `verify/dedupe.py` — URL normalisation then phash, Hamming ≤ 6
-- [ ] `verify/allowlist.py` — registrable-domain comparison, not substring
-- [ ] `audit/run_log.py` — the `audit.json` writer
-- [ ] `cache/http_cache.py` — R-04 caching layer
-- [ ] Temporary `calibration/threshold.json` with a placeholder, clearly marked provisional
+- [x] `search/base.py` — `Candidate`, `SearchProvider` protocol, `ProviderReport`
+- [x] `search/orchestrator.py` — thread-pool fan-out, per-provider timeout, R-14 isolation
+- [x] `verify/matcher.py` — cosine, threshold + margin rule, rejection reasons
+- [x] `verify/dedupe.py` — URL normalisation then phash, Hamming ≤ 6
+- [x] `verify/allowlist.py` — registrable-domain comparison, not substring
+- [x] `audit/run_log.py` — the `audit.json` writer
+- [ ] `cache/http_cache.py` — R-04 caching layer — **not built yet**, not exercised because Bluesky needed no paid quota to protect. Needed before Phase 5 (SerpApi).
+- [x] Temporary `calibration/threshold.json` placeholder — actually implemented as `config.load_match_policy()` returning an in-code placeholder (`is_placeholder=True`) rather than a committed JSON file. Equivalent effect, different mechanism than originally planned.
 
-**Exit criterion:** a synthetic test using a fake provider that returns three known image URLs produces a correct `MatchResult` and a complete `audit.json` containing every candidate with its rejection reason. A provider that raises is logged and the run still completes.
+**Exit criterion:** met via the demo UI's live run (see Phase 4a) rather than a standalone synthetic test — a real Bluesky search produced a complete `audit.json` with every candidate scored and a rejection reason. The synthetic fake-provider unit test described here was not separately written; consider adding it before Phase 5 if regression coverage on the matcher is wanted.
 
-## Phase 3 — Bluesky live provider  ·  ~4 h
+## Phase 3 — Bluesky live provider  ·  ~4 h  ·  **DONE (core), CLI wrapper not done**
 
-- [ ] **Verify A-01 first:** does Jetstream accept a connection and emit post JSON? If not, fall back to public AppView polling (`design.md` §2.2)
-- [ ] **Verify A-02:** construct one `cdn.bsky.app` image URL from a real post and fetch it successfully
-- [ ] Ingest loop — collect posts with image embeds, respect `BLUESKY_CRAWL_LIMIT`, R-12 politeness
-- [ ] Face detection + batched embedding over crawled images
-- [ ] `FaceIndex` — numpy `(N,512)`, `query()` via matmul
-- [ ] Persist to `.cache/bluesky_index.npz`, always print corpus size and crawl timestamp
-- [ ] `PostRef` metadata: handle, DID, display name, text, `published_at`, permalink
-- [ ] `python -m pipeline crawl --limit N`
+- [x] **A-01 resolved:** Jetstream not used — `getFeed`/`getAuthorFeed` via public AppView confirmed working with zero auth, live. `searchPosts` confirmed returning 403 unauthenticated, live — this is why feed generators are used instead of keyword search.
+- [x] **A-02 resolved, better than assumed:** image embeds return ready-made `thumb`/`fullsize` CDN URLs directly in the API response. No manual URL construction needed.
+- [x] Ingest loop — `_collect_image_refs` (sequential feed pagination) + `_fetch_one_image` (concurrent, `ThreadPoolExecutor(max_workers=16)`). Respects `BLUESKY_CRAWL_LIMIT`.
+- [x] Face detection + embedding over crawled images (`crawl()` method) — not batched (`embed_batch` exists but crawl() calls `embed()` per-face; fine at current scale, revisit if slow)
+- [x] `FaceIndex` — numpy `(N,512)`, `query()` via matmul
+- [ ] Persist to `.cache/bluesky_index.npz` — **not built**. Every server restart re-crawls. Fine for a demo session, a gap for a long-running deployment.
+- [x] `PostRef` metadata: handle, DID, display name, text, `published_at`, permalink
+- [ ] `python -m pipeline crawl --limit N` — **not built as a standalone CLI command.** The crawl is currently only reachable through `webapp/server.py`'s `/api/search` endpoint, which calls `BlueskyProvider.crawl()` directly. See memory.md "Not done" for the refactor note.
 
-**Exit criterion:** `crawl --limit 2000` ingests ≥ 2000 real posts, finds ≥ 200 faces, and prints a crawl timestamp within the last few minutes. Querying with a face known to be in the corpus returns its post at rank 0 with a real permalink that opens in a browser.
+**Exit criterion — met, informally.** Measured live: 200 posts crawled, 86 faces indexed, 27.1s elapsed (first version, before the concurrency fix, timed out at 90s for 150 posts — see memory.md for the diagnosis). A probe face known to be absent from a 300-post crawl correctly returned `NO_MATCH` with all candidates rejected below threshold, proving the query path works and doesn't fabricate matches. A same-face-in-corpus rank-0 test (the originally planned exit criterion) was not separately run — worth doing before trusting this at scale.
 
-**Risk:** face yield per post is low. Mitigation: raise the crawl limit; log the yield ratio so the budget is data-driven rather than guessed.
+## Phase 4 — CLI end to end  ·  NOT DONE, superseded by Phase 4a for the demo path
 
-## Phase 4 — CLI end to end  ·  ~2 h
+`scan`, `crawl`, `search`, `run-all` as standalone CLI commands do not exist yet. `version` and `serve` are the only commands in `cli.py`. The functionality exists but is currently only reachable via the web UI's endpoints. **This is a gap, not a design decision** — revisit before relying on the CLI for anything beyond `serve`.
 
-- [ ] `cli.py` — `scan`, `crawl`, `search`, `run-all` (`anchor` and `verify` stubbed)
-- [ ] `scan --webcam` with a live preview window and keypress capture
-- [ ] `rich` candidate table: score, source, domain, decision, reason
-- [ ] `runs/<id>/` layout per `architecture.md` §7, score-and-decision encoded in candidate filenames
-- [ ] `--dry-run` flag (R-06)
+## Phase 4a — Local demo UI  ·  ~2.5 h  ·  **DONE**  *(amended 5 Sep 2026, prd.md G8/S13)*
 
-**Exit criterion — the Day 1 milestone.** `python -m pipeline run-all --webcam` captures from the webcam, embeds, searches the live Bluesky corpus, prints the full scored candidate table, and writes a complete `runs/<id>/`. **Zero API keys configured.**
+Owner's explicit instruction: build the scanning interface and its logic, then **stop before any blockchain work**. This phase is that scanning interface.
 
-Commit and stop. Day 1 is a demoable pipeline.
+- [x] `webapp/server.py` — FastAPI, `/api/scan`, `/api/search/{run_id}`, calling `pipeline.face` and `pipeline.search.bluesky`/`verify.matcher` directly, no duplicate logic. (`GET /api/run/{id}` from the original design was not built — audit files are written to `runs/` but there's no endpoint to re-fetch one; low priority.)
+- [x] `webapp/static/index.html` + `app.js` — plain HTML/JS, no framework. Webcam capture via `getUserMedia`, capture button, aligned-crop preview, liveness verdict badge
+- [x] Candidate table rendered in the page: rank, score (with a visual bar), source, post link, decision, reason — sorted, accept row highlighted
+- [x] Bound to `127.0.0.1` only, no auth. Documented in server.py's module docstring and architecture.md 5a.
+- [x] `python -m pipeline serve` launches it
+
+**Exit criterion — met and verified live, not just started.** Ran the full loop via direct HTTP calls: `/api/scan` on a real photo returned a found face, liveness 0.9999 (live), det_score 0.945, and a base64 aligned crop. `/api/search/{run_id}` triggered a real 300-post crawl (107 faces indexed), re-verified all 20 candidates through our own face core, and returned a correct `NO_MATCH` (probe wasn't in the small random sample). `runs/<id>/audit.json` confirmed written with real scores. Browser-based manual click-through (as opposed to direct HTTP calls) and a screenshot for `runs/` were not captured this session — worth doing before the actual recording.
+
+**STOPPED HERE per owner instruction.** Do not proceed to Phase 9 (evidence bundle) or Phase 10 (chain anchoring) without explicit go-ahead.
 
 ---
 

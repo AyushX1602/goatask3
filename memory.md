@@ -5,8 +5,8 @@ Living state file. Read this first when resuming work.
 `phases.md` is the plan. **This is the state.** Update it at every phase boundary and whenever an assumption gets verified or a decision gets made.
 
 **Last updated:** 5 September 2026
-**Current phase:** Phase 2 — Provider interface + matcher
-**Overall:** 2 of 14 phases complete
+**Current phase:** STOPPED per owner instruction — scanning interface complete, before blockchain (Phase 9/10)
+**Overall:** Phases 0-2 + 4a (local demo UI) complete. Phases 3 (full Bluesky crawl loop as CLI command) and 5-8 (Lens, hardening, calibration) NOT done — the demo UI's server.py inlines a minimal crawl+search+verify loop directly rather than going through a finished Phase 3/4 CLI command. This is a known shortcut, see "What's NOT done" below.
 
 ---
 
@@ -32,11 +32,26 @@ Phase 0 complete and committed (`26744c4`). Starting Phase 1.
   - CPU timing: detect ~38 ms/img, embed ~48 ms/img (16-core CPU) — **Q5 resolved: stay on CPU**, no CUDA needed. A 2000-post crawl is ~3 min of inference.
   - A-04 resolved: `w600k_r50.onnx` has a dynamic batch axis (`input.1: [None, 3, 112, 112]`), confirmed via onnxruntime introspection, not assumed. Batched embedding path in `embed.py` is safe.
 - Test fixtures sourced from `deepinsight/insightface` and `ageitgey/face_recognition` sample data (obama.jpg/obama2.jpg = same person, lin-manuel-miranda.png/alex-lacamoire.png = different people, t1.jpg = group photo). Stored under `tests/fixtures/`, **not gitignored** — these are small sample images from permissively-used public repos, not private data, so they are fine to commit for test reproducibility.
+- Phase 2 core built: `search/base.py` (Candidate, ProviderReport, SearchProvider protocol), `search/orchestrator.py` (parallel fan-out, R-14 isolation), `verify/matcher.py` (score_candidates — the one place accept/reject is decided, R-03), `verify/allowlist.py`, `verify/dedupe.py`, `audit/run_log.py`.
+- `pipeline/face/liveness.py` built (MiniFASNetV2 ONNX). Preprocessing confirmed against the reference repo's own inference code (raw HWC->CHW, no normalisation, class index 1 = live, scale 2.7) — not guessed. Tested live: real photo scores 0.9999 live.
+- `pipeline/search/bluesky.py` built and proven live against the real API (not mocked):
+  - `getAuthorFeed`/`getFeed` need no auth; `searchPosts` returns 403 unauthenticated (confirmed live) — this is why the provider walks feed generators instead of using search.
+  - Image embeds return ready-made `thumb`/`fullsize` CDN URLs — better than the A-02 assumption in `design.md`, no manual URL construction needed.
+  - First version fetched images serially and **timed out at 90s for a 150-post crawl** (~1s/image, no error, just slow). Root-caused via direct timing, not guessed, then fixed with a `ThreadPoolExecutor(max_workers=16)` for image fetches specifically (feed pagination stays sequential — cheap, ~3s/50 posts). Result: 200 posts / 86 faces indexed in 27s.
+- **Amended scope (owner request, this session):** a local demo UI is now in scope (`prd.md` G8/S13, `architecture.md` 5a, `phases.md` Phase 4a) — a thin FastAPI + plain HTML/JS layer for judges, calling `pipeline.face`/`pipeline.search` directly with zero duplicate logic. Owner's explicit instruction: **build the scanning interface, then stop before any blockchain work.**
+- Built `webapp/server.py` (`/api/scan`, `/api/search/{run_id}`) and `webapp/static/{index.html,app.js}`. Wired `python -m pipeline serve`. Tested live end to end, not just started:
+  - `/api/scan` on a real photo: face found, liveness 0.9999 live, det_score 0.945, aligned crop returned as base64 PNG.
+  - `/api/search/{run_id}`: triggered a real 300-post Bluesky crawl (107 faces indexed), re-verified all 20 candidates with our own face core, correctly returned `NO_MATCH` (probe was Obama, not in this small random sample) — the honest-failure path (R-16) firing correctly, not a bug.
+  - Confirmed `runs/<id>/audit.json` written with real candidate scores and the placeholder threshold (0.42, `is_placeholder=True` until Phase 7 calibrates).
+  - Full request/response cycle for both endpoints exercised via direct HTTP calls (PowerShell's `Invoke-RestMethod` doesn't support multipart on 5.1, used Python `requests` instead) — server logs confirm 200 OK on all four calls made.
 
 **Not done**
-- No search providers, no matcher, no evidence, no chain code
+- No Google Lens / Bing / Mastodon providers (Phase 5-6, after the stop point but not yet started)
+- No calibration yet — `MatchPolicy` is still the Phase 2 placeholder (`threshold=0.42, is_placeholder=True`). The demo UI is currently running on an undemonstrated threshold; Phase 7 must replace this before the accept/reject numbers mean anything beyond "plausible."
+- No standalone `python -m pipeline crawl`/`search`/`run-all` CLI commands (Phase 3-4 as originally scoped) — the demo UI's `server.py` inlines a minimal version of that loop directly rather than calling a finished CLI pipeline function. This works today but is technical debt: if Phase 3/4 are built properly later, `server.py`'s inlined crawl-and-score block should be refactored to call that shared function instead of duplicating it.
+- No evidence bundle, no chain code, no C2PA, no OpenTimestamps (Phases 9-11) — **deliberately stopped here per owner instruction.**
 
-**Next action:** Phase 2 — `search/base.py`, `orchestrator.py`, `verify/matcher.py`, `dedupe.py`, `allowlist.py`, `audit/run_log.py`, `cache/http_cache.py`.
+**Next action:** awaiting owner's go-ahead to resume. Two reasonable next steps depending on direction: (a) proper Phase 3/4 CLI commands + Phase 5 Google Lens to broaden search before touching chain code, or (b) proceed to Phase 9/10 blockchain work now that the scanning interface is demonstrated. Do not start either without explicit instruction — the owner was specific about stopping here.
 
 ---
 

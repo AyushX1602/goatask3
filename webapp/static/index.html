@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>face-chain-verify — local demo</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #0d1117;
+    color: #e6edf3;
+    margin: 0;
+    padding: 24px;
+  }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+  .subtitle { color: #8b949e; font-size: 13px; margin-bottom: 20px; }
+  .layout { display: grid; grid-template-columns: 320px 1fr; gap: 20px; align-items: start; }
+  .panel {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: #8b949e; margin: 0 0 12px; }
+  video, #cropPreview {
+    width: 100%;
+    border-radius: 6px;
+    background: #000;
+  }
+  #cropPreview { width: 112px; height: 112px; image-rendering: pixelated; }
+  button {
+    background: #238636;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 16px;
+    font-size: 14px;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 10px;
+  }
+  button:disabled { background: #30363d; color: #6e7681; cursor: not-allowed; }
+  button.secondary { background: #1f6feb; }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .badge.live { background: #238636; color: #fff; }
+  .badge.spoof { background: #da3633; color: #fff; }
+  .badge.unknown { background: #6e7681; color: #fff; }
+  .badge.match { background: #238636; color: #fff; }
+  .badge.no-match { background: #6e7681; color: #fff; }
+  .stat-row { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; border-bottom: 1px solid #21262d; }
+  .stat-row span:first-child { color: #8b949e; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: #8b949e; font-weight: 500; padding: 8px 6px; border-bottom: 1px solid #30363d; font-size: 11px; text-transform: uppercase; }
+  td { padding: 8px 6px; border-bottom: 1px solid #21262d; vertical-align: middle; }
+  tr.accept { background: rgba(35, 134, 54, 0.12); }
+  a { color: #58a6ff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .score-bar { display: inline-block; height: 6px; border-radius: 3px; background: #30363d; width: 80px; position: relative; vertical-align: middle; margin-right: 6px; }
+  .score-fill { height: 6px; border-radius: 3px; background: #58a6ff; position: absolute; left: 0; top: 0; }
+  .score-fill.accept { background: #3fb950; }
+  .empty { color: #6e7681; font-size: 13px; padding: 20px; text-align: center; }
+  #status { font-size: 13px; color: #8b949e; margin-top: 10px; min-height: 18px; }
+</style>
+</head>
+<body>
+  <h1>face-chain-verify — scanning interface</h1>
+  <div class="subtitle">
+    Local demo UI. Same pipeline code as the CLI (architecture.md 5a) — this page does not
+    duplicate any face or matching logic. Zero API keys required: search runs against a live
+    Bluesky crawl (prd.md S10).
+  </div>
+
+  <div class="layout">
+    <div class="panel">
+      <h2>1. Capture</h2>
+      <video id="video" autoplay playsinline muted></video>
+      <button id="captureBtn">Capture &amp; Scan</button>
+      <div id="status"></div>
+
+      <div id="scanResult" style="margin-top:16px; display:none;">
+        <h2 style="margin-top:16px;">Probe face</h2>
+        <img id="cropPreview" alt="aligned crop" />
+        <div class="stat-row"><span>Detector confidence</span><span id="detScore">—</span></div>
+        <div class="stat-row"><span>Liveness</span><span id="livenessBadge">—</span></div>
+        <button id="searchBtn" class="secondary" disabled>Search for matches</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>2. Candidates — Bluesky live search</h2>
+      <div id="searchStatus" class="empty">Capture a face and click "Search for matches" to begin.</div>
+      <div id="resultSummary" style="display:none; margin-bottom:14px;">
+        <span class="badge" id="verdictBadge">—</span>
+        <span style="color:#8b949e; font-size:13px; margin-left:10px;" id="summaryText"></span>
+      </div>
+      <table id="candidateTable" style="display:none;">
+        <thead>
+          <tr><th>#</th><th>Score</th><th>Source</th><th>Post</th><th>Decision</th><th>Reason</th></tr>
+        </thead>
+        <tbody id="candidateBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
