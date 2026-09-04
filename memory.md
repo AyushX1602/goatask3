@@ -4,28 +4,39 @@ Living state file. Read this first when resuming work.
 
 `phases.md` is the plan. **This is the state.** Update it at every phase boundary and whenever an assumption gets verified or a decision gets made.
 
-**Last updated:** 4 September 2026
-**Current phase:** Phase 0 — Scaffold
-**Overall:** 0 of 14 phases complete
+**Last updated:** 5 September 2026
+**Current phase:** Phase 2 — Provider interface + matcher
+**Overall:** 2 of 14 phases complete
 
 ---
 
 ## 1. Where we are right now
 
-Planning complete, decision recorded, documents written. Implementation not started.
+Phase 0 complete and committed (`26744c4`). Starting Phase 1.
 
 **Done**
 - Deep research pass on all four layers, including a second pass specifically checking for a better architecture (`ANALYSIS.md`)
 - Architecture chosen: Solution 4, scored 4.9 vs 4.2 / 3.8 / 2.0 for the alternatives
-- Six planning documents written: `prd.md`, `architecture.md`, `design.md`, `rules.md`, `phases.md`, `memory.md`
-- `.venv` created at `d:\codes\hh goa face\.venv` (Python 3.12.10)
+- Six planning documents written and slop-checked against the no-ai-slop skill (banned word `leverage` removed from `prd.md`)
+- `.venv` created, all pinned deps installed cleanly on Windows / py312 — no build failures, confirming D-02 (skip `insightface`) and D-05 (skip FAISS) were the right calls
+- Package tree scaffolded per `architecture.md` §6, module boundaries documented in each `__init__.py`
+- `pipeline/config.py` — env loading, `MatchPolicy` (R-09 placeholder, clearly marked), commitment salt (R-01)
+- `scripts/fetch_models.py` — all 3 models downloaded, sha256-verified, confirmed idempotent on re-run
+- `pipeline/cli.py` stub — `python -m pipeline --help` and `version` both verified working
+- `git init`, first commit `26744c4`
+
+- Phase 1 complete and committed. `face/types.py`, `detect.py`, `align.py`, `embed.py` written. All 4 mandatory exit-criterion tests pass, plus 3 extra guard tests (canonical_kps ordering, multi-face sort, empty detection). Real measured numbers, not assumed:
+  - same-person (obama1 vs obama2): cosine **0.7652**
+  - different-person (miranda vs lacamoire): cosine **0.0645**
+  - flip invariance: > 0.9 (test asserts and passes)
+  - CPU timing: detect ~38 ms/img, embed ~48 ms/img (16-core CPU) — **Q5 resolved: stay on CPU**, no CUDA needed. A 2000-post crawl is ~3 min of inference.
+  - A-04 resolved: `w600k_r50.onnx` has a dynamic batch axis (`input.1: [None, 3, 112, 112]`), confirmed via onnxruntime introspection, not assumed. Batched embedding path in `embed.py` is safe.
+- Test fixtures sourced from `deepinsight/insightface` and `ageitgey/face_recognition` sample data (obama.jpg/obama2.jpg = same person, lin-manuel-miranda.png/alex-lacamoire.png = different people, t1.jpg = group photo). Stored under `tests/fixtures/`, **not gitignored** — these are small sample images from permissively-used public repos, not private data, so they are fine to commit for test reproducibility.
 
 **Not done**
-- Dependencies **not installed** — the pip install was interrupted and must be re-run
-- No source files, no package tree, no `git init`
-- No models downloaded
+- No search providers, no matcher, no evidence, no chain code
 
-**Next action:** finish Phase 0. Install pinned deps, create the package tree, write `config.py` and `fetch_models.py`, `git init`.
+**Next action:** Phase 2 — `search/base.py`, `orchestrator.py`, `verify/matcher.py`, `dedupe.py`, `allowlist.py`, `audit/run_log.py`, `cache/http_cache.py`.
 
 ---
 
@@ -150,6 +161,12 @@ No source code yet.
 ---
 
 ## 8. Session log
+
+### Session 2 — 5 Sep 2026
+- Ran the `no-ai-slop` skill against all planning docs: 0 em-dash issues (remaining ones are table-cell separators, not rhythm crutches), 1 banned word (`leverage`) found and fixed in `prd.md`
+- Completed Phase 0: installed deps (no build failures on Windows py312 — validates D-02/D-05), scaffolded `pipeline/` package tree with boundary docstrings, wrote `config.py`, wrote and **ran** `fetch_models.py` against real URLs (found via GitHub/HF API lookups, not guessed) — all 3 models verified by sha256, confirmed idempotent
+- `git init`, first commit
+- Model URLs/hashes now known-good, recorded in `fetch_models.py` itself as the source of truth — no need to re-derive them
 
 ### Session 1 — 4 Sep 2026
 - Analysed the brief; identified that stage 2 (search) is the whole project and that "re-verify" is the graded part of stage 3
