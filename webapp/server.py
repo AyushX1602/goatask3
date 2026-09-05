@@ -37,7 +37,7 @@ from pipeline.face.liveness import LivenessChecker
 from pipeline.face.quality import passes as quality_passes, probe_error_message
 from pipeline.search.bluesky import BlueskyProvider
 from pipeline.search.web_detect import WebDetectProvider
-from pipeline.verify.pipeline_run import run_pipeline
+from pipeline.verify.pipeline_run import PipelineResult, run_pipeline
 
 app = FastAPI(title="face-chain-verify local demo UI")
 
@@ -50,7 +50,7 @@ _detector = FaceDetector()
 _embedder = FaceEmbedder()
 _liveness = LivenessChecker()
 _web_detect = WebDetectProvider()
-_bluesky = BlueskyProvider(crawl_limit=get_config().bluesky_crawl_limit or 300)
+_bluesky = BlueskyProvider(crawl_limit=get_config().bluesky_crawl_limit)
 _bluesky_crawled = False
 
 # In-memory run state, keyed by run_id. Fine for a single local demo user.
@@ -202,24 +202,53 @@ def search(run_id: str) -> SearchResponse:
     run_state = _runs[run_id]
     probe_vec = run_state["probe_vec"]
     aligned_png = run_state["aligned_png"]
+    public_image_url = run_state.get("public_image_url")
 
-    providers = []
+    primary_result = None
+    primary_providers_queried: list[str] = []
+
     if _web_detect.available():
-        providers.append(_web_detect)
-    else:
-        # No web_detect key configured — fall back to the keyless demo
-        # provider so the pipeline still runs end to end (prd.md S10).
+        primary_result = run_pipeline(
+            aligned_png, probe_vec, [_web_detect], _detector, _embedder,
+            public_image_url=public_image_url,
+        )
+        primary_providers_queried = [_web_detect.name]
+
+    # available()==True only means a key exists, not that a search will
+    # SUCCEED — e.g. the serpapi backend without public_image_url raises
+    # internally, R-14 catches it, and it surfaces as zero candidates
+    # returned. architecture.md 9 requires an actual fallback in that
+    # case, not a silent NO_MATCH that hides "the primary path never ran."
+    primary_produced_nothing = primary_result is None or not any(
+        r.candidates_returned > 0 for r in primary_result.provider_reports
+    )
+
+    if primary_produced_nothing:
         if not _bluesky_crawled:
             _bluesky.crawl(_detector, _embedder)
             _bluesky_crawled = True
-        providers.append(_bluesky)
+        fallback_result = run_pipeline(aligned_png, probe_vec, [_bluesky], _detector, _embedder)
 
-    result = run_pipeline(
-        aligned_png, probe_vec, providers, _detector, _embedder,
-        public_image_url=run_state.get("public_image_url"),
-    )
-
-    degraded = not _web_detect.available()
+        # Merge so the audit trail shows BOTH the failed/empty primary
+        # attempt (if one was made) and the fallback attempt — never
+        # silently swap one report set for the other (rules.md never-cut:
+        # full candidate/provider trail).
+        combined_reports = (
+            primary_result.provider_reports if primary_result else []
+        ) + fallback_result.provider_reports
+        result = PipelineResult(
+            match=fallback_result.match,
+            provider_reports=combined_reports,
+            identity_signals=fallback_result.identity_signals,
+            images_fetched=fallback_result.images_fetched,
+            images_deduped=fallback_result.images_deduped,
+        )
+        providers_queried = primary_providers_queried + [_bluesky.name]
+        degraded = True
+    else:
+        result = primary_result
+        providers_queried = primary_providers_queried
+        degraded = False
 
     audit = build_audit(
         run_id=run_id,
@@ -253,7 +282,7 @@ def search(run_id: str) -> SearchResponse:
             liveness=liveness_obj,
             is_live_capture=run_state["is_live_capture"],
             match=result.match,
-            providers_queried=[p.name for p in providers],
+            providers_queried=providers_queried,
             degraded_closed_corpus=degraded,
             identity_signals=result.identity_signals,
             candidates_examined=len(result.match.all_scored),

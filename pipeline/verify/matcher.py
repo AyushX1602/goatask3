@@ -9,8 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
-import numpy as np
-
 from pipeline.config import MatchPolicy
 from pipeline.search.base import Candidate
 

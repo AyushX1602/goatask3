@@ -17,7 +17,7 @@ import hashlib
 import time
 from dataclasses import dataclass
 
-from pipeline.evidence.canonical import canonical_bytes, evidence_hash_hex, sha256_hex
+from pipeline.evidence.canonical import canonical_bytes, evidence_hash_hex
 from pipeline.evidence.commitment import face_commitment_hex
 from pipeline.face.types import Embedding, LivenessResult
 from pipeline.verify.matcher import MatchResult

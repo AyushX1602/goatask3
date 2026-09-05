@@ -115,7 +115,32 @@ That is the exact property a future `anchor()`/`verify()` pair depends on, prove
 
 ---
 
-**Next action.** F1-F7 complete. Awaiting explicit go-ahead for F8 (blockchain: Foundry contract + Anvil deploy + tamper demo). Everything up to and including the evidence bundle is done, tested, and proven against a real live run.
+## 3e. Deep review pass — 1 real bug found and fixed, cleanup done
+
+5 Sep 2026, on owner request ("do a deep check now and fix errors if any"). Ran pyflakes, re-read every non-trivial module line by line, and cross-checked code against the documented behaviour in architecture.md rather than just re-running existing tests (which were all passing and would not have caught this).
+
+**Real bug found: the documented fallback behaviour did not exist in code.** `architecture.md` §9 states plainly: *"Both web-detection backends down -> Bluesky fallback still demonstrates the verifier, but this is a degraded run and the UI must say so."* `webapp/server.py`'s `search()` endpoint decided whether to use the primary path purely via `_web_detect.available()` — which only checks whether an API key exists, not whether a search will *succeed*. Concretely: SerpApi without a `public_image_url` raises internally (by design, `orchestrator.gather` correctly catches it per R-14), and that surfaced as the primary path silently returning zero candidates and `NO_MATCH`, with `degraded_closed_corpus=False` — i.e. the UI reported "we searched the web and found nothing" when the web search never actually ran.
+
+Verified this precisely before fixing it:
+```
+available (key set): True
+p.search(...) -> ValueError: serpapi backend needs a publicly reachable image URL
+```
+
+**Fix:** `search()` now runs the primary provider, then checks its actual `provider_reports` (did any provider return >0 candidates), and falls back to Bluesky if not — merging both attempts' `ProviderReport`s into one audit trail rather than silently swapping one for the other. Verified against the real running server with the exact failure scenario (SerpApi key present, no public URL): before the fix, `degraded=False, candidates=0`; after, `degraded=True, crawl_size=155, candidates=18`, and `audit.json` shows both the failed `web_detect` attempt (with its real error message) and the successful `bluesky` fallback.
+
+Added `tests/test_server_fallback.py` — 3 tests through FastAPI's real `TestClient` (not a stub), including one that asserts the audit trail contains both provider attempts by name.
+
+**Cleanup, no behavioural change:**
+- Removed 4 pyflakes-flagged unused imports (`numpy` in `matcher.py`, `time` in `pipeline_run.py`, `sha256_hex` re-export in `bundle.py`) and one unused local (`biggest_ok` in `pipeline_run.py`).
+- Removed dead config: `bluesky_seed_handles` was parsed from `BLUESKY_SEED_HANDLES` but nothing ever read it (the scoped-crawl idea it supported was cancelled by D-21). Removed the field from `Config`, and the env var from both `.env` and `.env.example`.
+- `BlueskyProvider` default `crawl_limit` in code (2000) never matched the documented/actual value (300) used everywhere it's actually instantiated; changed the dataclass default itself to 300 so config and code agree, and simplified `server.py`'s now-redundant `or 300` fallback.
+
+**69 tests passing** (66 prior + 3 new regression tests). No blockchain code touched, per the standing "stop before blockchain phase" instruction.
+
+---
+
+**Next action.** F1-F7 complete and deep-reviewed. Awaiting explicit go-ahead for F8 (blockchain: Foundry contract + Anvil deploy + tamper demo).
 
 ### What the owner should check in this revision
 

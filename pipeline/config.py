@@ -117,13 +117,12 @@ class Config:
     )
     min_face_px: int = field(default_factory=lambda: _env_int("MIN_FACE_PX", 50))
 
-    # Bluesky
-    bluesky_crawl_limit: int = field(default_factory=lambda: _env_int("BLUESKY_CRAWL_LIMIT", 2000))
-    bluesky_seed_handles: tuple[str, ...] = field(
-        default_factory=lambda: tuple(
-            h.strip() for h in (_env("BLUESKY_SEED_HANDLES") or "").split(",") if h.strip()
-        )
-    )
+    # Bluesky — keyless fallback provider only (D-21). Seed-handle scoped
+    # crawling was proposed and then cancelled (memory.md, old Phase 3b):
+    # web detection reaches real posts without us choosing where to look,
+    # which made scoped crawling both unnecessary and a step toward
+    # pre-selecting results, which the brief forbids.
+    bluesky_crawl_limit: int = field(default_factory=lambda: _env_int("BLUESKY_CRAWL_LIMIT", 300))
 
     # Storage
     pinata_jwt: str | None = field(default_factory=lambda: _env("PINATA_JWT"))

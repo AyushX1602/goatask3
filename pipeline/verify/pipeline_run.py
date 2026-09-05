@@ -14,7 +14,6 @@ exactly one verification implementation in the codebase (architecture.md
 
 from __future__ import annotations
 
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
@@ -79,7 +78,6 @@ def _score_one_candidate(
 
     usable = [f for f in faces if quality_passes(f, min_face_px)[0]]
     if not usable:
-        biggest_ok, reason = quality_passes(faces[0], min_face_px)
         return None, len(faces), "reject-face-too-small"
 
     best = -1.0
