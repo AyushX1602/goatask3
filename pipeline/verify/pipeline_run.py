@@ -531,7 +531,7 @@ def run_pipeline(
             except Exception:
                 return False, b""
 
-        expanded = expand_verified_candidates(verified_cands, http_get_fn=_get_html)
+        expanded = expand_verified_candidates(verified_cands, http_get_fn=_get_html, http=http)
         if expanded:
             for exp_cand in expanded:
                 if exp_cand.origin == "linked" or not exp_cand.image_url:

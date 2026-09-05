@@ -123,6 +123,7 @@ class Config:
     # which made scoped crawling both unnecessary and a step toward
     # pre-selecting results, which the brief forbids.
     bluesky_crawl_limit: int = field(default_factory=lambda: _env_int("BLUESKY_CRAWL_LIMIT", 300))
+    expand_serp_max_calls: int = field(default_factory=lambda: _env_int("EXPAND_SERP_MAX_CALLS", 1))
 
     # Storage
     pinata_jwt: str | None = field(default_factory=lambda: _env("PINATA_JWT"))

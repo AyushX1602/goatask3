@@ -24,6 +24,7 @@ import re
 from typing import Callable
 from urllib.parse import urlparse
 
+from pipeline.cache.http_cache import HttpCache
 from pipeline.search.base import Candidate
 
 # Reserved segments that must NEVER be parsed as a profile handle
@@ -157,7 +158,12 @@ def extract_handle(url: str) -> tuple[str, str] | None:
 
 
 def derive_profile_urls(handle: str, exclude_platform: str | None = None) -> list[tuple[str, str]]:
-    """Derives candidate profile URLs on known platforms from a verified handle."""
+    """Derives candidate profile URLs on known platforms from a verified handle.
+
+    Note: LinkedIn is deliberately excluded here (T2.6 / Item 2); LinkedIn
+    profiles are resolved via targeted Google SERP in linkedin_profiles() rather
+    than guessed/synthesized.
+    """
     if not handle or handle.lower() in RESERVED_SEGMENTS:
         return []
 
@@ -165,7 +171,6 @@ def derive_profile_urls(handle: str, exclude_platform: str | None = None) -> lis
     candidates = [
         ("github", f"https://github.com/{clean_handle}"),
         ("x", f"https://x.com/{clean_handle}"),
-        ("linkedin", f"https://www.linkedin.com/in/{clean_handle}"),
         ("instagram", f"https://www.instagram.com/{clean_handle}"),
         ("youtube", f"https://www.youtube.com/@{clean_handle}"),
     ]
@@ -209,6 +214,7 @@ def extract_outbound_social_links(html: str, source_url: str = "") -> list[str]:
 def expand_verified_candidates(
     verified_candidates: list[Candidate],
     http_get_fn: Callable[[str], tuple[bool, bytes]] | None = None,
+    http: HttpCache | None = None,
 ) -> list[Candidate]:
     """Generates expanded candidates from verified candidates (R-28).
 
@@ -216,12 +222,22 @@ def expand_verified_candidates(
       - Extracts handle from URL and derives candidate profiles on known platforms.
       - If http_get_fn is provided, fetches page HTML and extracts outbound social links
         (including 1 hop through link-in-bio services).
+      - If LinkedIn was not in the verified page's links, retrieves profile via Google SERP.
 
-    Candidates with directly resolvable images (e.g. GitHub avatar) receive origin="face".
-    Candidates where media is blocked/unresolvable (e.g. LinkedIn, Instagram) receive
-    origin="linked" and image_url="", ensuring they are recorded as claimed profiles
-    without being counted as face matches.
+    Candidates with directly resolvable images (e.g. GitHub avatar, or LinkedIn with SERP thumbnail)
+    receive origin="face". Candidates where media is blocked/unresolvable (e.g. Instagram, or LinkedIn
+    without thumbnail) receive origin="linked" and image_url="", ensuring they are recorded as claimed
+    profiles without being counted as face matches.
     """
+    from pipeline.cache.http_cache import get_http_cache
+    from pipeline.config import get_config
+    from pipeline.search.serp_resolve import linkedin_profiles
+
+    cfg = get_config()
+    max_serp_calls = cfg.expand_serp_max_calls
+    serp_calls_made = 0
+    cache = http if http is not None else get_http_cache()
+
     existing_urls = {c.page_url.rstrip("/") for c in verified_candidates}
     discovered_urls: set[str] = set()
     expanded_candidates: list[Candidate] = []
@@ -231,7 +247,7 @@ def expand_verified_candidates(
         source_plat = handle_info[0] if handle_info else None
         handle = handle_info[1] if handle_info else None
 
-        # 1. Derive profile URLs from handle
+        # 1. Derive profile URLs from handle (excludes LinkedIn)
         if handle and source_plat:
             for plat, derived_url in derive_profile_urls(handle, exclude_platform=source_plat):
                 clean = derived_url.rstrip("/")
@@ -240,6 +256,7 @@ def expand_verified_candidates(
                     _add_expanded_candidate(expanded_candidates, plat, clean, handle)
 
         # 2. Extract outbound links if HTML fetcher provided
+        has_linkedin_link = False
         if http_get_fn:
             try:
                 ok, body = http_get_fn(cand.page_url)
@@ -252,6 +269,9 @@ def expand_verified_candidates(
                         except Exception:
                             continue
 
+                        if "linkedin.com" in phost:
+                            has_linkedin_link = True
+
                         # 1-hop link-in-bio expansion
                         if phost in LINK_IN_BIO_DOMAINS:
                             bio_ok, bio_body = http_get_fn(link)
@@ -259,6 +279,8 @@ def expand_verified_candidates(
                                 bio_html = bio_body.decode("utf-8", errors="ignore")
                                 bio_outbound = extract_outbound_social_links(bio_html, link)
                                 for bio_link in bio_outbound:
+                                    if "linkedin.com" in bio_link:
+                                        has_linkedin_link = True
                                     clean_bio = bio_link.rstrip("/")
                                     if clean_bio not in existing_urls and clean_bio not in discovered_urls:
                                         h_info = extract_handle(clean_bio)
@@ -275,6 +297,17 @@ def expand_verified_candidates(
                                 _add_expanded_candidate(expanded_candidates, h_info[0], clean, h_info[1])
             except Exception:
                 pass
+
+        # 3. LinkedIn PFP retrieval via Google SERP if not in verified page's links
+        already_has_linkedin = has_linkedin_link or any("linkedin.com" in u for u in existing_urls | discovered_urls)
+        if not already_has_linkedin and handle and source_plat != "linkedin" and serp_calls_made < max_serp_calls:
+            serp_calls_made += 1
+            serp_l_cands = linkedin_profiles(handle, cache)
+            for lc in serp_l_cands:
+                clean_l = lc.page_url.rstrip("/")
+                if clean_l not in existing_urls and clean_l not in discovered_urls:
+                    discovered_urls.add(clean_l)
+                    expanded_candidates.append(lc)
 
     return expanded_candidates
 
@@ -293,7 +326,7 @@ def _add_expanded_candidate(
                 image_url_fallbacks=(),
             )
         )
-    elif platform in ("linkedin", "instagram"):
+    elif platform == "instagram":
         target_list.append(
             Candidate(
                 page_url=url,

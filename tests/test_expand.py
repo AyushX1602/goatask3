@@ -88,13 +88,14 @@ def test_valid_profile_handles_extracted():
 
 
 def test_derive_profile_urls():
-    """Deriving profile URLs yields expected targets and excludes the source platform."""
+    """Deriving profile URLs yields expected targets and excludes the source platform.
+    LinkedIn is excluded from derivation because it is resolved via Google SERP."""
     derived = derive_profile_urls("torvalds", exclude_platform="github")
     plats = {p for p, _ in derived}
     assert "github" not in plats
-    assert "linkedin" in plats
+    assert "linkedin" not in plats
     assert "x" in plats
-    assert "https://www.linkedin.com/in/torvalds" in {u for _, u in derived}
+    assert "https://x.com/torvalds" in {u for _, u in derived}
 
 
 def test_extract_outbound_social_links_and_link_in_bio():
@@ -131,12 +132,11 @@ def test_expand_verified_candidates_generates_face_and_linked_origins():
     assert len(expanded) > 0
 
     by_plat = {c.source: c for c in expanded}
-    # LinkedIn & Instagram are known media-blocked platforms: origin="linked"
-    assert "expand-linkedin" in by_plat
-    assert by_plat["expand-linkedin"].origin == "linked"
-    assert by_plat["expand-linkedin"].image_url == ""
+    # Instagram & X are origin="linked" when derived without direct avatar endpoint
+    assert "expand-instagram" in by_plat
+    assert by_plat["expand-instagram"].origin == "linked"
+    assert by_plat["expand-instagram"].image_url == ""
 
-    # Other derived profiles
     assert "expand-x" in by_plat
     assert by_plat["expand-x"].origin == "linked"
 

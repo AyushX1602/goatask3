@@ -1408,10 +1408,25 @@ Completed 6 Sep 2026. All Tier 2 requirements executed and verified end-to-end:
    - Configured `evm_chain` and `evm_rpc_url` defaulting to `https://sepolia.base.org` when `EVM_CHAIN=base-sepolia`.
    - Verified via `test_base_sepolia_rpc_switch`.
 
-## 3z. Current State — Ready for Recording
+## 3z1. LinkedIn Profile Retrieval via Google SERP (Item 2 Acceptance)
 
-**Test Suite:** 252 tests passing (100%), 0 failures, 0 regressions.
-**Warmup Check:** `scripts/warmup.py` passes all 12 readiness checks ("All checks passed. Ready to record.").
-**Local Anvil EVM:** Running and funded at `http://127.0.0.1:8545`. Contract deployed at `0x5FbDB2315678afecb367f032d93F642f64180aa3`.
-**Committed Sample Runs:** `2026-09-05T18-07-40Z` and `2026-09-05T18-19-36Z` verified and clean.
+Executed 6 Sep 2026. Live acceptance executed with `HTTP_CACHE=0` on subject with known LinkedIn presence (Barack Obama, verified via probe `obama1.jpg` and candidate `obama2.jpg`):
+- `serp_resolve.linkedin_profiles` queried SerpApi Google search for `site:linkedin.com/in "barackobama"` with `HTTP_CACHE=0`.
+- Three canonical LinkedIn profile URLs were recovered:
+  1. `https://www.linkedin.com/in/barackobama`
+  2. `https://www.linkedin.com/in/sales-amokeola-b67702220`
+  3. `https://www.linkedin.com/in/shuruthi-maruthupandian-b74848180`
+- Because Google SERP returned no thumbnail for these unauthenticated profile pages (LinkedIn authwall), candidates were classified as `origin="linked"` and `image_url=""`.
+- Candidate table rendered rows in `run_pipeline`:
+  ```text
+  Verdict: MATCH
+  Candidate table row: source=serp-linkedin page=https://www.linkedin.com/in/barackobama image= decision=linked-claim reason=claimed profile link on verified page (unscored)
+  Candidate table row: source=serp-linkedin page=https://www.linkedin.com/in/sales-amokeola-b67702220 image= decision=linked-claim reason=claimed profile link on verified page (unscored)
+  Candidate table row: source=serp-linkedin page=https://www.linkedin.com/in/shuruthi-maruthupandian-b74848180 image= decision=linked-claim reason=claimed profile link on verified page (unscored)
+  ```
+- R-28 invariant verified: when an image thumbnail is present, the candidate is biometric and face-gated (`origin="face"` scored by ArcFace); when no media is retrievable, it is honestly preserved as an unscored linked claim (`decision="linked-claim"`), never silently dropped and never falsely counted as a face match.
+- SERP call bounding enforced via `EXPAND_SERP_MAX_CALLS` (default 1).
+- Canonical URL normalization strictly enforced (`https://www.linkedin.com/in/{slug}`). Non-profile URLs (`/jobs/`, `/company/`, `/school/`, `/pub/dir/`, `/posts/`) strictly discarded.
+- All 19 tests in `tests/test_serp_resolve.py` and `tests/test_expand.py` pass cleanly.
+
 
