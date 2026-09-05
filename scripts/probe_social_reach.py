@@ -214,7 +214,7 @@ def main() -> int:
             continue
 
         print(f"\n  (a) DISCOVERY: social URLs found on {len(by_platform)} platform(s)")
-        print(f"\n  (b) VERIFIABILITY per platform:")
+        print("\n  (b) VERIFIABILITY per platform:")
         print(f"  {'platform':<22} {'page':<8} {'image fetch':<26} {'our score'}")
         print("  " + "-" * 72)
 

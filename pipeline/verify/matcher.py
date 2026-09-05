@@ -62,6 +62,8 @@ class MatchResult:
     # verify/pipeline_run.py's reject-platform-blocked reason and R-03:
     # match_kind is a provider claim, never used to accept/reject).
     unverifiable_platform_hits: tuple[ScoredCandidate, ...] = ()
+    # R-28: profile claims discovered via expansion/links with no biometric face score
+    linked_claims: tuple[ScoredCandidate, ...] = ()
 
 
 def _registrable_domain(url: str) -> str:
@@ -105,6 +107,18 @@ def score_candidates(
         )
 
     for cand, score, faces_found in scored:
+        if getattr(cand, "origin", "face") == "linked":
+            results.append(
+                ScoredCandidate(
+                    cand,
+                    None,
+                    0,
+                    "linked-claim",
+                    "claimed profile link on verified page (unscored)",
+                )
+            )
+            continue
+
         if score is None:
             results.append(
                 ScoredCandidate(cand, None, faces_found, "reject-no-face", "no face detected in candidate image")
@@ -129,6 +143,9 @@ def score_candidates(
         r for r in results
         if r.decision == "reject-platform-blocked" and r.candidate.match_kind in ("full", "partial")
     )
+    linked_claims = tuple(
+        r for r in results if r.decision == "linked-claim" or getattr(r.candidate, "origin", "face") == "linked"
+    )
 
     scoreable = [r for r in results if r.score is not None and r.decision == "pending"]
     scoreable.sort(key=lambda r: r.score, reverse=True)
@@ -150,6 +167,7 @@ def score_candidates(
             best=None, runner_up=None, all_scored=results, threshold=policy.threshold,
             margin_required=policy.margin, verdict=verdict,
             unverifiable_platform_hits=platform_blocked_full_or_partial,
+            linked_claims=linked_claims,
         )
 
     best = scoreable[0]
@@ -263,4 +281,5 @@ def score_candidates(
         margin_required=policy.margin,
         verdict=verdict,
         unverifiable_platform_hits=platform_blocked_full_or_partial,
+        linked_claims=linked_claims,
     )

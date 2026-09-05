@@ -201,8 +201,22 @@ def test_evm_anchor_has_no_silent_zero_fallback_for_image_hash():
 # --- test 3: schema v2 fields -----------------------------------------------
 
 
-def test_schema_version_is_2():
-    assert SCHEMA_VERSION == 2
+def test_schema_version_is_current():
+    assert SCHEMA_VERSION == 3
+
+
+def test_artifacts_manifest_is_present_in_v3():
+    match = _match_result()
+    bundle = build_evidence(
+        run_id="x", embedding=_embedding(), salt=b"s" * 32, liveness=_liveness(),
+        is_live_capture=False, match=match, providers_queried=[], degraded_closed_corpus=False,
+        identity_signals=[], candidates_examined=1, pipeline_version="0.1.0",
+        image_bytes=REAL_IMAGE_BYTES,
+    )
+    assert "artifacts" in bundle.data
+    assert len(bundle.data["artifacts"]) == 1
+    assert bundle.data["artifacts"][0]["path"].startswith("match_image")
+    assert bundle.data["artifacts"][0]["sha256"] == bundle.data["match"]["image_sha256"]
 
 
 def test_content_kind_is_never_null_in_a_built_bundle():

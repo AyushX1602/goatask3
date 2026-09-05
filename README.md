@@ -51,22 +51,23 @@ face scan / upload  ->  web/social search  ->  local re-verification (ArcFace)
    contract (`EvidenceRegistry.sol`). No embedding, crop, or biometric
    template ever reaches the chain.
 
-6. **Re-verification, including tamper detection.** `verify` recomputes the
-   hash from the bundle on disk and checks it against the on-chain record.
-   Editing one character of an anchored bundle and re-running `verify`
-   reports `TAMPERED` with a non-zero exit code — demonstrated live, see
-   below. The demo UI exposes the same anchor/verify flow as buttons (see
-   "Anchor and verify from the UI"), plus a tamper button that mutates a
-   throw-away in-memory copy and re-verifies it — the real evidence.json on
-   disk is never touched.
+6. **Re-verification, including tamper detection.** `verify` executes an ordered
+   three-stage audit:
+   - **Artifact Check:** Recomputes sha256 and perceptual hash directly from
+     artifacts on disk (`match_image.jpg`), never trusting stored digests (`ARTIFACT_MISMATCH` / `ARTIFACT_MISSING`).
+   - **Integrity Check:** Recomputes canonical keccak256 hash across the bundle (`BUNDLE_MODIFIED`).
+   - **On-chain Record:** Verifies the recomputed hash exists on the EVM registry (`NOT_ANCHORED` or `PASS`).
+   Demonstrates three distinct tamper modes (`swap-artifact`, `edit-bundle`, `forge-bundle`),
+   each operating on an isolated scratch copy leaving original files untouched.
+   The web UI provides an always-visible Evidence Explorer panel to inspect, verify,
+   and tamper past runs without re-scanning.
 
-## Why a local chain (Anvil), not a public testnet
+## Why a local chain (Anvil) as default, with Base Sepolia as bonus
 
-The brief explicitly permits "a local/simulated chain." Anvil has zero
-faucet, RPC, or network-deprecation risk — nothing outside our control can
-break the demo. A public testnet (Base Sepolia) remains a documented,
-optional bonus (`memory.md` D-27) but was not pursued, since it would add
-risk for a requirement the brief already waives.
+The brief explicitly permits "a local/simulated chain." Anvil provides a real
+EVM with real transactions, blocks, and contract execution at zero faucet, RPC,
+or network-deprecation risk (`memory.md` D-43). Base Sepolia is fully supported
+as an opt-in bonus by setting `EVM_CHAIN=base-sepolia` (R-15: RPC switch only).
 
 ## How to run it
 
@@ -130,16 +131,69 @@ those code paths are currently reachable only through the demo UI's
 the exact same `pipeline.*` functions the CLI would (`webapp/server.py`
 contains no duplicate scoring logic — see `architecture.md` §5a).
 
-### Anchor and verify from the UI
+### CLI Subcommands and Structured Exit Codes (T2.7)
 
-After a `MATCH`, the UI shows a "3. Blockchain" panel with three buttons,
-calling `POST /api/anchor/{run_id}`, `/api/verify/{run_id}`, and
-`/api/tamper/{run_id}` — the same `pipeline.chain.*` functions the CLI
-commands above use, not a separate implementation. The tamper button never
-edits the real `evidence.json`: it mutates a scratch in-memory copy, writes
-it to a temp file, re-verifies that, and deletes the temp file — verified
-by test (`tests/test_anchor_verify_endpoints.py`) and live that the file on
-disk is byte-identical before and after.
+The full verification and blockchain lifecycle is available via CLI:
+
+```powershell
+# 1. Scan a probe photograph
+python -m pipeline.cli scan path/to/photo.jpg --run-id my-run
+
+# 2. Search web/social providers for the scanned probe
+python -m pipeline.cli search my-run
+
+# 3. Or execute scan -> search -> anchor in a single command
+python -m pipeline.cli run-all path/to/photo.jpg --anchor
+
+# 4. Anchor an existing match's evidence bundle
+python -m pipeline.cli anchor my-run
+
+# 5. Re-verify against the on-chain registry
+python -m pipeline.cli verify my-run
+
+# 6. Demonstrate tamper detection (scratch copy, zero risk to real run)
+python -m pipeline.cli verify my-run --tamper swap-artifact
+python -m pipeline.cli verify my-run --tamper edit-bundle
+python -m pipeline.cli verify my-run --tamper forge-bundle
+```
+
+**Deterministic exit codes:**
+| Code | Meaning |
+|---|---|
+| `0` | OK / PASS |
+| `1` | Verification mismatch (`ARTIFACT_MISMATCH`, `BUNDLE_MODIFIED`, `NOT_ANCHORED`) |
+| `2` | No face detected or quality gate failure in probe |
+| `3` | Provider error / network failure across all search backends |
+| `4` | Search completed honestly with `NO_MATCH` (no candidate above threshold) |
+| `5` | EVM RPC or contract execution error |
+
+### Evidence Explorer & Three Tamper Modes (T2.1, T2.2, T2.4)
+
+The demo UI features an always-visible **Evidence Explorer** panel allowing judges
+to browse historical runs under `runs/`, inspect their schema version and anchored
+receipts, and execute three distinct tamper demonstration modes with zero setup:
+
+- `swap-artifact`: flips 1 byte in `match_image.jpg` on disk -> detected as `ARTIFACT_MISMATCH`
+  (proves the bundle cryptographically pins real image bytes on disk, not just metadata; R-25).
+- `edit-bundle`: modifies `match.score_bps` in `evidence.json` -> detected as `BUNDLE_MODIFIED`
+  (proves the on-chain keccak256 hash pins bundle contents).
+- `forge-bundle`: crafts a fresh, unanchored bundle -> detected as `NOT_ANCHORED`
+  (proves internal consistency is not on-chain provenance).
+
+Every tamper mode operates on an isolated scratch copy in a temporary directory;
+the real run directory is guaranteed byte-identical before and after.
+
+### Profile Expansion with Strict Face Gating (T2.6 / R-28)
+
+To close the social recall gap without compromising verification integrity:
+- When a candidate clears threshold, `pipeline/search/expand.py` extracts verified handles
+  strictly from URL structures, filtering reserved segments (`/p/`, `/reel/`, `/pub/`, `/shorts/`).
+- Inspects outbound social links on the verified page and traverses 1-hop link-in-bio hosts.
+- **R-28 strict face gating:** Candidates with resolvable avatars (e.g. GitHub) re-enter
+  the ArcFace verification pipeline (`origin="face"`), requiring threshold and margin.
+- Media-blocked platforms (e.g. LinkedIn, Instagram) are preserved as `origin="linked"`,
+  rendering as unscored profile claims (`decision="linked-claim"`) without falsely inflating
+  biometric face match counts.
 
 ### Recall recovery: resolver cascade and real diagnostics
 
@@ -160,25 +214,22 @@ never a fabricated confidence value.
 A real search against the live web, using GCV, on an unmodified probe photo
 of a public figure:
 
-```
-python -m pipeline anchor 2026-09-05T18-07-40Z
+```powershell
+python -m pipeline.cli anchor 2026-09-05T18-07-40Z
   anchored tx=0x0cf1cc99973cc51d80a2aaed865b353a648d5fe478c562b506e8812b71de82f2
   chain_id: 31337   block: 30
   contract: 0x5FbDB2315678afecb367f032d93F642f64180aa3
   evidence: 0xa4a6bd6319cac0c1f098570bea5cfbb6dcdb51f94a310658a64e038430f85fd6
 
-python -m pipeline verify 2026-09-05T18-07-40Z
-  RESULT: PASS — recomputed hash matches the on-chain record exactly
-
-# edit one character (score_bps 9806 -> 9999) in evidence.json, then:
-python -m pipeline verify 2026-09-05T18-07-40Z
-  RESULT: TAMPERED — recomputed hash ... does not match the anchored hash ...
-  exit code: 1
-
-# restore the original byte, then:
-python -m pipeline verify 2026-09-05T18-07-40Z
+python -m pipeline.cli verify 2026-09-05T18-07-40Z
   RESULT: PASS — recomputed hash matches the on-chain record exactly
   exit code: 0
+
+python -m pipeline.cli verify 2026-09-05T18-07-40Z --tamper swap-artifact
+  Result:  ARTIFACT_MISMATCH
+  Target:  match_image.jpg
+  Details: artifact sha256 mismatch
+  exit code: 0 (demonstration succeeded)
 ```
 
 Both sample runs below are committed under `runs/` exactly as produced —

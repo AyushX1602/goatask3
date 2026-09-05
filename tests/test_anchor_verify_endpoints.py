@@ -78,6 +78,8 @@ def _write_sample_run(run_id: str) -> None:
     run_dir = RUNS_DIR / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "evidence.json").write_bytes(bundle.canonical_json)
+    img_bytes = (Path(__file__).parent / "fixtures" / "obama1.jpg").read_bytes()
+    (run_dir / "match_image.jpg").write_bytes(img_bytes)
 
 
 @pytest.fixture
@@ -114,6 +116,8 @@ def test_anchor_then_verify_endpoint_round_trip(client, sample_run_id):
     verify_data = verify_resp.json()
     assert verify_data["overall"] == "PASS"
     assert verify_data["on_chain_exists"] is True
+    assert len(verify_data["artifact_checks"]) > 0
+    assert verify_data["artifact_checks"][0]["match"] is True
 
 
 def test_verify_endpoint_before_anchor_reports_not_anchored(client, sample_run_id):
@@ -126,24 +130,29 @@ def test_tamper_endpoint_never_mutates_the_real_file(client, sample_run_id):
     """The core safety property: the file on disk must be byte-identical
     before and after calling /api/tamper/{run_id}."""
     bundle_path = RUNS_DIR / sample_run_id / "evidence.json"
-    before = bundle_path.read_bytes()
+    img_path = RUNS_DIR / sample_run_id / "match_image.jpg"
+    before_bundle = bundle_path.read_bytes()
+    before_img = img_path.read_bytes()
 
     client.post(f"/api/anchor/{sample_run_id}")
-    resp = client.post(f"/api/tamper/{sample_run_id}")
-    data = resp.json()
 
-    after = bundle_path.read_bytes()
-    assert before == after, "the real evidence.json must never be mutated by the tamper endpoint"
-    assert data["overall"] == "TAMPERED"
-    assert data["original_value"] != data["tampered_value"]
+    # Mode 1: swap-artifact -> ARTIFACT_MISMATCH
+    resp1 = client.post(f"/api/tamper/{sample_run_id}?mode=swap-artifact")
+    data1 = resp1.json()
+    assert data1["overall"] == "ARTIFACT_MISMATCH"
+
+    # Mode 2: edit-bundle -> BUNDLE_MODIFIED
+    resp2 = client.post(f"/api/tamper/{sample_run_id}?mode=edit-bundle")
+    data2 = resp2.json()
+    assert data2["overall"] == "BUNDLE_MODIFIED"
+
+    assert bundle_path.read_bytes() == before_bundle
+    assert img_path.read_bytes() == before_img
 
 
-def test_tamper_endpoint_reports_pass_shaped_response_before_anchor(client, sample_run_id):
-    """Without an anchor.json, the tampered copy's hash is simply not on
-    chain at all — NOT_ANCHORED, not TAMPERED (there is no claim of prior
-    anchoring to contradict). Distinguishing these two is the same
-    reasoning as reverify_bundle's expected_hash parameter."""
-    resp = client.post(f"/api/tamper/{sample_run_id}")
+def test_tamper_endpoint_reports_not_anchored_on_forge_mode(client, sample_run_id):
+    """forge-bundle produces an unanchored valid bundle -> NOT_ANCHORED."""
+    resp = client.post(f"/api/tamper/{sample_run_id}?mode=forge-bundle")
     data = resp.json()
     assert data["overall"] == "NOT_ANCHORED"
 
@@ -153,3 +162,18 @@ def test_verify_endpoint_missing_bundle_is_an_error_not_a_500(client):
     assert resp.status_code == 200
     data = resp.json()
     assert data["overall"] == "ERROR"
+
+
+def test_list_runs_and_run_detail(client, sample_run_id):
+    resp = client.get("/api/runs")
+    assert resp.status_code == 200
+    runs = resp.json()
+    assert any(r["run_id"] == sample_run_id for r in runs)
+
+    resp_detail = client.get(f"/api/run/{sample_run_id}")
+    assert resp_detail.status_code == 200
+    detail = resp_detail.json()
+    assert detail["run_id"] == sample_run_id
+    assert detail["bundle"] is not None
+    assert any(a["name"] == "match_image.jpg" for a in detail["artifacts"])
+

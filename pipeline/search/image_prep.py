@@ -41,14 +41,28 @@ MAX_SEARCH_SIDE = 2048
 JPEG_QUALITY = 90
 
 
-def prepare_search_image(bgr: np.ndarray) -> bytes:
-    """Returns JPEG bytes of the original image, downscaled only if it
-    exceeds MAX_SEARCH_SIDE on its longest edge.
+def prepare_search_image(
+    bgr: np.ndarray,
+    face: object | None = None,
+    use_head_crop: bool = False,
+    head_crop_size: int = 512,
+) -> bytes:
+    """Returns JPEG bytes of the image to send to the search provider.
 
-    Downscaling is intentionally mild: unlike face embedding, reverse image
-    search benefits from resolution and context, so we preserve as much as
-    the request-size budget allows.
+    By default, returns JPEG bytes of the original image, downscaled only if it
+    exceeds MAX_SEARCH_SIDE on its longest edge. Downscaling is intentionally
+    mild: unlike face embedding, reverse image search benefits from resolution
+    and context.
+
+    If use_head_crop is True and face is provided, creates a normalized
+    head-crop query representation (T2.5 / R-27) via pipeline.face.headcrop,
+    isolating the head/hair while masking out background/garments that may bias
+    the search engine away from the person.
     """
+    if use_head_crop and face is not None:
+        from pipeline.face.headcrop import create_head_crop
+        bgr = create_head_crop(bgr, face, target_size=head_crop_size)
+
     h, w = bgr.shape[:2]
     longest = max(h, w)
 

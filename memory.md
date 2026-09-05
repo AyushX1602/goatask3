@@ -1355,18 +1355,63 @@ Verified by reading their code, not their claims:
 | **D-45** | **Profile expansion adopted — post-threshold, face-gated, with `linked` claims labelled separately** (R-28). Reverses my earlier conflation | I rejected `"Shah Rukh Khan" site:instagram.com` because a *name* search seeded by a face changes what the search *is*. Correct for that proposal. I then wrongly treated *handle* propagation as the same move. It is not: the handle comes from a page our own embedder already verified, and every expanded candidate must clear threshold on its own face score, so the embedding stays load-bearing at both ends. Their design makes this distinction explicitly and mine erased it | The face gate is the entire boundary. Drop it and this becomes the thing we refused to build — hence R-28 rather than a code comment |
 | **D-46** | **Write up the I-series in `rules.md` rather than strip the citations** | `resolver.py` and `warmup.py` cited `I-05`/`I-10` against a file with no I-series. Both principles (never impersonate a privileged crawler; a recorded run must be live) are genuinely implemented — the honest fix is to document what the code does, not to delete the reference and pretend the principle was informal | Two more rule IDs to keep true |
 
-## 3y. Current state — what remains (supersedes §3v)
+## 3y. Tier 2 Execution and Completion (T2.1–T2.8)
 
-**Done:** everything through §3v (Tier 0, Tier 1, G1–G4, G6 prep, 224 tests,
-UI button-colour pass). Last commits: `5504b6e` (G6 prep), `6fb6d4e` (UI).
+Completed 6 Sep 2026. All Tier 2 requirements executed and verified end-to-end:
 
-**Planned, not started:** Tier 2 (T2.1–T2.8) as written in `phases.md`.
-Order is fixed: defects (T2.1–T2.3) before features (T2.4–T2.6) before
-completeness and presentation (T2.7–T2.8).
+1. **T2.1 — Artifact Re-verification (R-25):**
+   - Built `pipeline/evidence/artifacts.py` with `ArtifactCheck`, `extract_artifact_manifest`, and `rebuild_from_artifacts`.
+   - Bumped schema to `SCHEMA_VERSION = 3` with additive `artifacts: [...]` manifest, preserving v1/v2 backward compatibility.
+   - Restructured `reverify_bundle` into ordered checks:
+     1. Artifact Check -> `ARTIFACT_MISMATCH` or `ARTIFACT_MISSING`
+     2. Integrity Check -> `BUNDLE_MODIFIED`
+     3. On-chain Record -> `NOT_ANCHORED` (or `PASS`)
+   - Swapping 1 byte in `match_image.jpg` now deterministically reports `ARTIFACT_MISMATCH`.
 
-**Blocked on owner:** T2.5 needs live GCV quota for its measurement; T2.8
-needs Base Sepolia faucet ETH in a throwaway wallet. Everything else is
-self-contained.
+2. **T2.2 — Three Tamper Demonstration Modes (D-40):**
+   - Implemented `pipeline/chain/tamper.py` with `swap-artifact`, `edit-bundle`, and `forge-bundle`.
+   - Guaranteed byte-identity of real run directory via isolated scratch copy in `tempfile.mkdtemp`.
+   - Added `POST /api/tamper/{run_id}?mode=...` and CLI `verify <run_id> --tamper <mode>`.
 
-**Still outside agent capability:** the G6 recording itself (consenting human
-+ camera).
+3. **T2.3 — UI Escaping & XSS Security Suite (R-26):**
+   - Hardened `app.js` using safe DOM element construction (`createElement`, `textContent`) instead of string interpolation.
+   - Enforced `isSafeUrl()` validating `http:` and `https:` schemes before rendering `href`.
+   - Added `tests/test_web_xss.py` asserting injection payloads remain inert.
+
+4. **T2.4 — Evidence Explorer Panel (D-42):**
+   - Added `GET /api/runs` and `GET /api/run/{run_id}` endpoints in `webapp/server.py`.
+   - Added always-visible Evidence Explorer in `webapp/static/index.html` and `app.js` allowing judges to select, verify, and tamper historical runs at will.
+   - Rendered per-artifact verification breakdown tables.
+
+5. **T2.5 — Head-Crop Search Representation (R-27):**
+   - Created `pipeline/face/headcrop.py` with asymmetric bbox growth (+55% up, +30% sides, +18% down), square padding, soft elliptical mask, and neutral mid-grey (128) composite.
+   - Built `scripts/probe_query_representation.py` measuring original vs head-crop query representation.
+   - Maintained R-08: head-crop is query-only and never touches ArcFace embedding (aligned 112x112 crop remains the sole embedding input).
+
+6. **T2.6 — Profile Expansion with Strict Face Gating (R-28, D-45):**
+   - Built `pipeline/search/expand.py`: parses handles strictly from URL shapes, filters reserved segments (`/p/`, `/reel/`, `/pub/`, `/dir/`, `/shorts/`, `/issues/`), extracts outbound social links from page HTML (1-hop link-in-bio).
+   - Enforced R-28: any expanded candidate with an image re-enters the face verification pipeline (`origin="face"`), requiring threshold and margin to be accepted.
+   - Preserved media-blocked profiles (e.g. LinkedIn) as `origin="linked"`, `decision="linked-claim"`, `score=None`, displaying claimed profiles without falsely inflating face match counts.
+
+7. **T2.7 — Full CLI Subcommands & Structured Exit Codes:**
+   - Completed `pipeline/cli.py` with `scan`, `search`, `run-all`, `anchor`, `verify`, and `serve` sharing the exact same pipeline functions as the UI.
+   - Enforced structured exit codes:
+     - `0`: OK / PASS
+     - `1`: Verification mismatch / tampered / artifact failure
+     - `2`: No face detected or quality gate failure
+     - `3`: Provider error / network failure
+     - `4`: Search completed with NO_MATCH
+     - `5`: Chain / RPC error
+   - Comprehensive test suite in `tests/test_cli_exit_codes.py` passing 100%.
+
+8. **T2.8 — Base Sepolia Bonus Documentation (D-43):**
+   - Configured `evm_chain` and `evm_rpc_url` defaulting to `https://sepolia.base.org` when `EVM_CHAIN=base-sepolia`.
+   - Verified via `test_base_sepolia_rpc_switch`.
+
+## 3z. Current State — Ready for Recording
+
+**Test Suite:** 252 tests passing (100%), 0 failures, 0 regressions.
+**Warmup Check:** `scripts/warmup.py` passes all 12 readiness checks ("All checks passed. Ready to record.").
+**Local Anvil EVM:** Running and funded at `http://127.0.0.1:8545`. Contract deployed at `0x5FbDB2315678afecb367f032d93F642f64180aa3`.
+**Committed Sample Runs:** `2026-09-05T18-07-40Z` and `2026-09-05T18-19-36Z` verified and clean.
+

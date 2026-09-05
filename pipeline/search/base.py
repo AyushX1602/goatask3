@@ -46,6 +46,8 @@ class Candidate:
     # signal about cross-platform image reuse worth showing) from "just
     # another lookalike, ignore it".
     match_kind: str = "unknown"
+    # R-28: "face" (biometrically verified) vs "linked" (claimed profile link on verified page)
+    origin: str = "face"
 
 
 @dataclass(frozen=True)

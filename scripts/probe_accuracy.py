@@ -113,7 +113,7 @@ def main() -> int:
     print(f"\n  non-match stats: n={len(arr)} max={arr.max():.4f} "
           f"mean={arr.mean():.4f} std={arr.std():.4f}")
     print(f"  mean + 4*std = {arr.mean() + 4 * arr.std():.4f}   <- a defensible floor")
-    print(f"  same-person reference (obama1 vs obama2): ", end="")
+    print("  same-person reference (obama1 vs obama2): ", end="")
     v2, _ = embed_largest(det, emb, cv2.imread(str(FIX / "obama2.jpg")))
     print(f"{float(np.dot(v2, ref_vec)):.4f}")
     return 0

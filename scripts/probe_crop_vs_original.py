@@ -31,7 +31,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from pipeline.config import get_config  # noqa: E402
 from pipeline.face.align import align  # noqa: E402
 from pipeline.face.detect import FaceDetector  # noqa: E402
-from pipeline.search.web_detect import WebDetectProvider, parse_gcv  # noqa: E402
+from pipeline.search.web_detect import parse_gcv  # noqa: E402
 
 CACHE = REPO_ROOT / ".cache" / "crop_vs_original"
 
@@ -91,7 +91,7 @@ def report(label: str, payload: dict) -> None:
     print(f"  visuallySimilarImages:    {len(web.get('visuallySimilarImages') or [])}")
     print(f"  -> parsed candidates:     {len(cands)}")
 
-    print(f"\n  IDENTITY SIGNALS (this is what tells us it recognised the person):")
+    print("\n  IDENTITY SIGNALS (this is what tells us it recognised the person):")
     if signals:
         for s in signals[:8]:
             print(f"    * {s}")
@@ -139,9 +139,9 @@ def main() -> int:
     print()
 
     stem = src.stem
-    report(f"A. ALIGNED CROP 112x112 (what the pipeline sends today)",
+    report("A. ALIGNED CROP 112x112 (what the pipeline sends today)",
            run_gcv(f"{stem}__crop", crop_bytes, key))
-    report(f"B. ORIGINAL IMAGE (what it should probably send)",
+    report("B. ORIGINAL IMAGE (what it should probably send)",
            run_gcv(f"{stem}__original", original_bytes, key))
     return 0
 

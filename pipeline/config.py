@@ -129,7 +129,7 @@ class Config:
 
     # Chain (architecture.md 8, R-15: same code path regardless of which chain)
     evm_chain: str = field(default_factory=lambda: _env("EVM_CHAIN", "anvil"))
-    evm_rpc_url: str = field(default_factory=lambda: _env("EVM_RPC_URL", "http://127.0.0.1:8545"))
+    evm_rpc_url: str | None = field(default_factory=lambda: _env("EVM_RPC_URL"))
     evm_private_key: str | None = field(default_factory=lambda: _env("EVM_PRIVATE_KEY"))
     evm_contract_address: str | None = field(default_factory=lambda: _env("EVM_CONTRACT_ADDRESS"))
 

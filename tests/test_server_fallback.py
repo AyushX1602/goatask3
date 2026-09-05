@@ -27,6 +27,7 @@ def server_module(monkeypatch):
     the exact conditions of the bug: a key exists, but the primary path
     cannot succeed without a public_image_url."""
     monkeypatch.setenv("SERPAPI_KEY", "fake-key-for-test")
+    monkeypatch.setenv("WEB_DETECT_BACKEND", "serpapi")
     monkeypatch.delenv("GCV_API_KEY", raising=False)
     import webapp.server as srv
 
@@ -34,6 +35,7 @@ def server_module(monkeypatch):
     yield srv
     # leave module state clean for any subsequent test importing it
     monkeypatch.delenv("SERPAPI_KEY", raising=False)
+    monkeypatch.delenv("WEB_DETECT_BACKEND", raising=False)
     importlib.reload(srv)
 
 
@@ -44,12 +46,13 @@ def test_web_detect_available_but_cannot_succeed_without_public_url(server_modul
         server_module._web_detect.search(b"", np.zeros(512, dtype=np.float32))
 
 
-def test_primary_produced_nothing_triggers_bluesky_fallback(server_module, monkeypatch):
+def test_primary_produced_nothing_triggers_bluesky_fallback(server_module, monkeypatch, tmp_path):
     """The actual regression: run the /api/search logic path (not the full
     HTTP layer) and confirm it falls back rather than silently reporting
     an empty MATCH search as if it were a real, exhausted web search."""
     from fastapi.testclient import TestClient
 
+    monkeypatch.setattr(server_module, "RUNS_DIR", tmp_path)
     client = TestClient(server_module.app)
 
     with open("tests/fixtures/obama1.jpg", "rb") as f:
@@ -72,11 +75,12 @@ def test_primary_produced_nothing_triggers_bluesky_fallback(server_module, monke
     assert data["degraded_closed_corpus"] is True
 
 
-def test_audit_trail_shows_both_the_failed_primary_and_the_fallback(server_module):
+def test_audit_trail_shows_both_the_failed_primary_and_the_fallback(server_module, monkeypatch, tmp_path):
     """The fix must not silently swap providers — both attempts must be
     visible (rules.md never-cut: full candidate/provider trail)."""
     from fastapi.testclient import TestClient
 
+    monkeypatch.setattr(server_module, "RUNS_DIR", tmp_path)
     client = TestClient(server_module.app)
     server_module._bluesky.crawl_limit = 5
 
@@ -87,9 +91,8 @@ def test_audit_trail_shows_both_the_failed_primary_and_the_fallback(server_modul
     client.post(f"/api/search/{run_id}")
 
     import json
-    from pipeline.config import RUNS_DIR
 
-    audit = json.loads((RUNS_DIR / run_id / "audit.json").read_text(encoding="utf-8"))
+    audit = json.loads((tmp_path / run_id / "audit.json").read_text(encoding="utf-8"))
     provider_names = {p["name"] for p in audit["providers"]}
     assert "web_detect" in provider_names, "the failed primary attempt must still be logged"
     assert "bluesky" in provider_names, "the fallback attempt must be logged"
@@ -97,3 +100,4 @@ def test_audit_trail_shows_both_the_failed_primary_and_the_fallback(server_modul
     web_detect_report = next(p for p in audit["providers"] if p["name"] == "web_detect")
     assert web_detect_report["error"] is not None
     assert "publicly reachable image URL" in web_detect_report["error"]
+

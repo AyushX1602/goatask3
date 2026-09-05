@@ -184,6 +184,7 @@ function shortenReason(decision, reason) {
   if (decision === "reject-no-image") return "no-image-url";
   if (decision === "reject-domain") return reason || decision;
   if (decision === "reject-below-threshold") return reason || decision;
+  if (decision === "linked-claim") return "claimed profile link (unscored)";
   return reason || decision;
 }
 
@@ -224,9 +225,23 @@ function diagnosticObservation(diag) {
 }
 
 function escapeHtml(s) {
-  const div = document.createElement("div");
-  div.textContent = s || "";
-  return div.innerHTML;
+  if (!s) return "";
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function isSafeUrl(url) {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url, window.location.origin);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function renderResults(data) {
@@ -344,57 +359,75 @@ function renderResults(data) {
   // that "if everything's rejected, what's accepted?" was a real question
   // asked against a run that DID match. Decision order is the only thing
   // that changes; scores and reasons are untouched.
-  const decisionRank = { ACCEPT: 0, corroborating: 1 };
+  const decisionRank = { ACCEPT: 0, corroborating: 1, "linked-claim": 2 };
   const ordered = [...data.candidates].sort(
-    (a, b) => (decisionRank[a.decision] ?? 2) - (decisionRank[b.decision] ?? 2)
+    (a, b) => (decisionRank[a.decision] ?? 3) - (decisionRank[b.decision] ?? 3)
   );
 
   for (const c of ordered) {
     const tr = document.createElement("tr");
     if (c.decision === "ACCEPT") tr.classList.add("accept");
-    // 'corroborating' is a real match above threshold, just not the
-    // top-ranked one. It must NOT be styled as a rejection (same honesty
-    // principle as R-21 — never misrepresent what the engine concluded).
     if (c.decision === "corroborating") tr.classList.add("corroborating");
+    if (c.decision === "linked-claim") tr.classList.add("linked-claim");
 
-    const scorePct = c.score !== null ? Math.max(0, Math.min(100, c.score * 100)) : 0;
-    const scoreCell = c.score !== null
-      ? `<span class="score-bar"><span class="score-fill ${c.decision === "ACCEPT" || c.decision === "corroborating" ? "accept" : ""}" style="width:${scorePct}%"></span></span>${c.score.toFixed(4)}`
-      : diagnosticObservation(c.diagnostics);
+    const tdRank = document.createElement("td");
+    tdRank.textContent = String(c.rank + 1);
+    tr.appendChild(tdRank);
 
-    const postCell = c.page_url
-      ? `<a href="${c.page_url}" target="_blank" rel="noopener">${c.page_url.replace("https://", "")}</a>`
-      : "—";
+    const tdScore = document.createElement("td");
+    if (c.score !== null) {
+      const scorePct = Math.max(0, Math.min(100, c.score * 100));
+      tdScore.innerHTML = `<span class="score-bar"><span class="score-fill ${c.decision === "ACCEPT" || c.decision === "corroborating" ? "accept" : ""}" style="width:${scorePct}%"></span></span>${c.score.toFixed(4)}`;
+    } else {
+      tdScore.innerHTML = diagnosticObservation(c.diagnostics);
+    }
+    tr.appendChild(tdScore);
 
-    // Reason cell: a short, scannable label in the cell itself, full
-    // sentence in a `title` tooltip. Found live 5 Sep 2026: the
-    // platform-blocked reason sentence is long enough to turn a table row
-    // into a multi-line billboard, which defeats the point of a scannable
-    // diagnostics table on a recording. Every row still carries the FULL
-    // reason (never dropped, R-24) — just not inline at full length.
+    const tdSource = document.createElement("td");
+    tdSource.textContent = c.source || "";
+    tr.appendChild(tdSource);
+
+    const tdPost = document.createElement("td");
+    if (c.page_url) {
+      if (isSafeUrl(c.page_url)) {
+        const a = document.createElement("a");
+        a.href = c.page_url;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.textContent = c.page_url.replace(/^https?:\/\//, "");
+        tdPost.appendChild(a);
+      } else {
+        tdPost.textContent = c.page_url;
+      }
+    } else {
+      tdPost.textContent = "—";
+    }
+    tr.appendChild(tdPost);
+
+    const tdDecision = document.createElement("td");
+    tdDecision.textContent = c.decision || "";
+    tr.appendChild(tdDecision);
+
     const shortReason = shortenReason(c.decision, c.reason);
+    const tdReason = document.createElement("td");
+    tdReason.className = "reason-cell";
+    tdReason.style.color = "#8b949e";
+    tdReason.title = c.reason || "";
+    tdReason.textContent = shortReason;
+    tr.appendChild(tdReason);
 
-    // match_kind (T1.2): the provider's own claim about how confident it
-    // is this is the SAME image — diagnostic only, R-03, never part of
-    // the accept decision. "unknown" renders dim since it carries no
-    // information; "full"/"partial" are the strongest provider signals.
     const mk = c.match_kind || "unknown";
     const mkClass = mk === "full" ? "mk-full" : mk === "partial" ? "mk-partial" : "mk-weak";
+    const tdMk = document.createElement("td");
+    tdMk.className = mkClass;
+    tdMk.textContent = mk;
+    tr.appendChild(tdMk);
 
-    tr.innerHTML = `
-      <td>${c.rank + 1}</td>
-      <td>${scoreCell}</td>
-      <td>${c.source}</td>
-      <td>${postCell}</td>
-      <td>${c.decision}</td>
-      <td class="reason-cell" style="color:#8b949e;" title="${escapeHtml(c.reason)}">${shortReason}</td>
-      <td class="${mkClass}">${mk}</td>
-    `;
     candidateBody.appendChild(tr);
   }
 }
 
-// ---------------- chain: anchor / verify / tamper (G4, 6 Sep 2026) --------
+// ---------------- chain: anchor / verify / tamper (G4 / T2.2) --------
 
 const chainPanel = document.getElementById("chainPanel");
 const anchorBtn = document.getElementById("anchorBtn");
@@ -421,6 +454,7 @@ anchorBtn.addEventListener("click", async () => {
         `evidence: ${data.evidence_hash}`;
       verifyBtn.disabled = false;
       tamperBtn.disabled = false;
+      await loadRunsList();
     } else {
       chainStatus.textContent = "Anchor failed.";
       chainResult.textContent = data.error || "unknown error";
@@ -439,10 +473,7 @@ verifyBtn.addEventListener("click", async () => {
 
 tamperBtn.addEventListener("click", async () => {
   if (!currentRunId) return;
-  // /api/tamper/{run_id} mutates a SCRATCH COPY only — the real
-  // evidence.json on disk is never touched (verified in
-  // tests/test_anchor_verify_endpoints.py). Safe to click repeatedly.
-  await runVerify(`/api/tamper/${currentRunId}`, "Tampering a scratch copy and re-verifying...", true);
+  await runVerify(`/api/tamper/${currentRunId}?mode=swap-artifact`, "Tampering scratch copy (swap-artifact)...", true);
 });
 
 async function runVerify(endpoint, statusText, isTamper = false) {
@@ -464,4 +495,183 @@ async function runVerify(endpoint, statusText, isTamper = false) {
   }
 }
 
+// ---------------- Evidence Explorer (T2.4) ----------------
+
+const runsSelect = document.getElementById("runsSelect");
+const refreshRunsBtn = document.getElementById("refreshRunsBtn");
+const selectedRunCard = document.getElementById("selectedRunCard");
+const expRunId = document.getElementById("expRunId");
+const expMeta = document.getElementById("expMeta");
+const expVerdictBadge = document.getElementById("expVerdictBadge");
+const expArtifactsBody = document.getElementById("expArtifactsBody");
+const expVerifyBtn = document.getElementById("expVerifyBtn");
+const expTamperArtifactBtn = document.getElementById("expTamperArtifactBtn");
+const expTamperBundleBtn = document.getElementById("expTamperBundleBtn");
+const expTamperForgeBtn = document.getElementById("expTamperForgeBtn");
+const expActionStatus = document.getElementById("expActionStatus");
+const expActionResult = document.getElementById("expActionResult");
+
+let activeExplorerRunId = null;
+
+async function loadRunsList() {
+  if (!runsSelect) return;
+  try {
+    const resp = await fetch("/api/runs");
+    if (!resp.ok) return;
+    const runs = await resp.json();
+    runsSelect.innerHTML = '<option value="">-- Choose a past run --</option>';
+    for (const r of runs) {
+      const opt = document.createElement("option");
+      opt.value = r.run_id;
+      const v = r.verdict ? ` [${r.verdict}]` : "";
+      const score = r.score_bps ? ` ${(r.score_bps / 10000).toFixed(4)}` : "";
+      const plat = r.platform ? ` via ${r.platform}` : "";
+      const anc = r.has_anchor ? " ⚓" : "";
+      opt.textContent = `${r.run_id}${v}${score}${plat}${anc}`;
+      runsSelect.appendChild(opt);
+    }
+  } catch (err) {
+    console.error("Failed loading runs list:", err);
+  }
+}
+
+if (refreshRunsBtn) {
+  refreshRunsBtn.addEventListener("click", loadRunsList);
+}
+
+if (runsSelect) {
+  runsSelect.addEventListener("change", async () => {
+    const runId = runsSelect.value;
+    if (!runId) {
+      selectedRunCard.style.display = "none";
+      activeExplorerRunId = null;
+      return;
+    }
+    await selectRun(runId);
+  });
+}
+
+async function selectRun(runId) {
+  activeExplorerRunId = runId;
+  expActionStatus.textContent = "";
+  expActionResult.style.display = "none";
+  expActionResult.textContent = "";
+
+  try {
+    const resp = await fetch(`/api/run/${runId}`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (data.error) {
+      alert(data.error);
+      return;
+    }
+
+    selectedRunCard.style.display = "block";
+    expRunId.textContent = data.run_id;
+
+    const b = data.bundle;
+    const a = data.anchor;
+    const aud = data.audit;
+
+    const verdict = (aud && aud.verdict) || (b && "MATCH") || "UNKNOWN";
+    expVerdictBadge.innerHTML = `<span class="badge ${verdict === "MATCH" ? "match" : "no-match"}">${verdict}</span>`;
+
+    const metaParts = [];
+    if (b && b.match) {
+      metaParts.push(`Score: ${(b.match.score_bps / 10000).toFixed(4)}`);
+      metaParts.push(`Provider: ${b.match.provider}`);
+      if (b.post && b.post.platform) metaParts.push(`Platform: ${b.post.platform}`);
+      if (b.post && b.post.content_kind) metaParts.push(`Kind: ${b.post.content_kind}`);
+    }
+    if (a) {
+      metaParts.push(`Anchored: tx=${a.tx_hash ? a.tx_hash.slice(0, 10) + "..." : "none"}`);
+    }
+    expMeta.textContent = metaParts.join(" · ") || "No bundle metadata";
+
+    expArtifactsBody.innerHTML = "";
+    for (const art of (data.artifacts || [])) {
+      const tr = document.createElement("tr");
+      const tdName = document.createElement("td");
+      tdName.textContent = art.name;
+      const tdSize = document.createElement("td");
+      tdSize.textContent = art.size_bytes >= 1024 ? `${Math.round(art.size_bytes / 1024)} KB` : `${art.size_bytes} B`;
+      const tdSha = document.createElement("td");
+      tdSha.style.fontFamily = "ui-monospace, monospace";
+      tdSha.style.fontSize = "11px";
+      tdSha.textContent = (art.sha256 || "").slice(0, 16) + "...";
+      const tdStatus = document.createElement("td");
+      tdStatus.id = `exp-art-status-${art.name.replace(/[^a-zA-Z0-9]/g, "_")}`;
+      tdStatus.innerHTML = `<span style="color:#8b949e;">present</span>`;
+
+      tr.appendChild(tdName);
+      tr.appendChild(tdSize);
+      tr.appendChild(tdSha);
+      tr.appendChild(tdStatus);
+      expArtifactsBody.appendChild(tr);
+    }
+  } catch (err) {
+    console.error("Failed loading run details:", err);
+  }
+}
+
+async function runExplorerAction(url, actionName) {
+  if (!activeExplorerRunId) return;
+  expActionStatus.textContent = `${actionName}...`;
+  expActionResult.style.display = "none";
+  try {
+    const resp = await fetch(url, { method: "POST" });
+    const data = await resp.json();
+
+    const isPass = data.overall === "PASS";
+    expActionStatus.innerHTML = `<span class="badge ${isPass ? "match" : "no-match"}">${data.overall}</span> <span style="margin-left:8px;">${escapeHtml(data.detail)}</span>`;
+
+    const lines = [];
+    if (data.mode) lines.push(`Tamper mode:   ${data.mode}`);
+    if (data.tampered_field) lines.push(`Mutation:      ${data.tampered_field}: ${data.original_value} -> ${data.tampered_value}`);
+    if (data.recomputed_hash) lines.push(`Recomputed:    ${data.recomputed_hash}`);
+    if (data.anchored_hash) lines.push(`Anchored:      ${data.anchored_hash}`);
+    if (data.on_chain_exists !== undefined) lines.push(`On-chain:      exists=${data.on_chain_exists}`);
+
+    if (data.artifact_checks && data.artifact_checks.length) {
+      lines.push("\nArtifact Checks:");
+      for (const ac of data.artifact_checks) {
+        const ok = ac.match ? "OK" : "FAIL";
+        lines.push(`  [${ok}] ${ac.path} — ${ac.detail}`);
+        const el = document.getElementById(`exp-art-status-${ac.path.replace(/[^a-zA-Z0-9]/g, "_")}`);
+        if (el) {
+          el.innerHTML = `<span class="badge ${ac.match ? "match" : "no-match"}">${ok}</span>`;
+        }
+      }
+    }
+
+    expActionResult.textContent = lines.join("\n");
+    expActionResult.style.display = "block";
+  } catch (err) {
+    expActionStatus.textContent = `Action failed: ${err.message}`;
+  }
+}
+
+if (expVerifyBtn) {
+  expVerifyBtn.addEventListener("click", () => {
+    if (activeExplorerRunId) runExplorerAction(`/api/verify/${activeExplorerRunId}`, "Verifying against on-chain record");
+  });
+}
+if (expTamperArtifactBtn) {
+  expTamperArtifactBtn.addEventListener("click", () => {
+    if (activeExplorerRunId) runExplorerAction(`/api/tamper/${activeExplorerRunId}?mode=swap-artifact`, "Tampering artifact (XOR)");
+  });
+}
+if (expTamperBundleBtn) {
+  expTamperBundleBtn.addEventListener("click", () => {
+    if (activeExplorerRunId) runExplorerAction(`/api/tamper/${activeExplorerRunId}?mode=edit-bundle`, "Tampering bundle JSON");
+  });
+}
+if (expTamperForgeBtn) {
+  expTamperForgeBtn.addEventListener("click", () => {
+    if (activeExplorerRunId) runExplorerAction(`/api/tamper/${activeExplorerRunId}?mode=forge-bundle`, "Testing forged bundle");
+  });
+}
+
 initCamera();
+loadRunsList();
+

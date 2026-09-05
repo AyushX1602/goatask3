@@ -1,0 +1,82 @@
+{
+  "responses": [
+    {
+      "webDetection": {
+        "webEntities": [
+          {
+            "entityId": "/m/0dgw9r",
+            "score": 0.47824663,
+            "description": "Human"
+          }
+        ],
+        "visuallySimilarImages": [
+          {
+            "url": "https://www.chevening.org/wp-content/uploads/2019/07/Anjal-square-427x427.jpg"
+          },
+          {
+            "url": "https://www.unido.org/sites/default/files/styles/author_image/public/2025-09/Neeshad%20image.jpeg?itok=wPSIItq7"
+          },
+          {
+            "url": "https://cdn-ilbibgp.nitrocdn.com/eakWUVxgVLoymIJUurpQZcwTweYHDeju/assets/images/optimized/rev-43a2f73/www.lotame.com/wp-content/uploads/2025/05/9b138846fd7d047884ffd05dee616405059f8e9a.jpg"
+          },
+          {
+            "url": "https://images.squarespace-cdn.com/content/v1/620e9bcc3f26bd43191b8f2f/9a565721-226e-4882-966f-814f9e1e25d1/Perplexity.jpg"
+          },
+          {
+            "url": "https://www.nestle.com/sites/default/files/styles/webp_image/public/2025-04/yannick-rohrbasser-480.jpg.webp?itok=u4IsmNjE"
+          },
+          {
+            "url": "https://cdn.bsky.app/img/avatar/plain/did:plc:flfa7b6kgjqp3bbh223tmpjk/bafkreie426yhuimig3tmxsl7pd4casn6rzbsgvrlwsgul4b5smfncmqvea"
+          },
+          {
+            "url": "https://www.fiu.edu/_assets/images/academics/my-first-job/jorge-cisternas.webp"
+          },
+          {
+            "url": "https://www.ashoka.edu.in/wp-content/uploads/2026/08/Untitled-design-22.png"
+          },
+          {
+            "url": "https://www.cumbria.ac.uk/ezgif.com-gif-maker.webp"
+          },
+          {
+            "url": "https://aa.stanford.edu/sites/g/files/sbiybj17081/files/styles/large_square/public/media/image/somil_bansal_0_0.jpg?h=7f412c8f&itok=EM7SdgA-"
+          },
+          {
+            "url": "https://www.kimep.kz/college-of-social-sciences/files/2026/01/E89A7191.jpg"
+          },
+          {
+            "url": "https://cdn.learfield.com/wp-content/uploads/2024/07/James-Zullo.JPEG-1.jpg"
+          },
+          {
+            "url": "https://www.sas.com/en_us/customers/references/customer-quotes/_jcr_content/par/styledcontainer_1774/par/carouselwrapper/parsysslidecontainer/carouselslide_631632735/par/image.img.jpg/1743948007243.jpg"
+          },
+          {
+            "url": "https://accme.org/wp-content/smush-webp/2026/07/Naresh-Rajan-copy-436x436.jpg.webp"
+          },
+          {
+            "url": "https://psa.gov.in/CMS/web/sites/default/files/team/Tushar%20-Jha.png"
+          },
+          {
+            "url": "https://unu.edu/sites/default/files/styles/card_view_big/public/2025-06/vishwas-color-200.png?itok=9DIYDDzw"
+          },
+          {
+            "url": "https://ganguli-gang.stanford.edu/img/surya.jpg"
+          },
+          {
+            "url": "https://www.ashoka.edu.in/wp-content/uploads/2024/07/Profile-400-%C3%97-411-px-52.jpg"
+          },
+          {
+            "url": "https://doximity-res.cloudinary.com/images/f_auto,q_auto,t_public_profile_photo_320x320/avwkqckl69v92l3hssok/saeed-ali-md-clermont-fl.jpg"
+          },
+          {
+            "url": "https://www.jetbrains.com/_assets/rr/varij-kapil-DDrSwwVm.jpg"
+          }
+        ],
+        "bestGuessLabels": [
+          {
+            "label": "gentleman"
+          }
+        ]
+      }
+    }
+  ]
+}

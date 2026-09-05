@@ -14,10 +14,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import cv2
-import numpy as np
 import pytest
 
-from pipeline.cache.http_cache import HttpCache
 from pipeline.config import MatchPolicy
 from pipeline.face.align import align
 from pipeline.face.detect import FaceDetector

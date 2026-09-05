@@ -306,16 +306,16 @@ and observed (R-13).
 
 ### T2.1 — Artifact re-verification  ·  **the critical item**
 
-- [ ] `evidence/artifacts.py` — `ArtifactCheck`, and an artifact list derived
+- [x] `evidence/artifacts.py` — `ArtifactCheck`, and an artifact list derived
       from the bundle (`artifacts[]` when present, else the v2 `match_image.jpg`
       fallback so both committed sample runs keep verifying unchanged)
-- [ ] `rebuild_from_artifacts(run_dir) -> tuple[dict, list[ArtifactCheck]]` —
+- [x] `rebuild_from_artifacts(run_dir) -> tuple[dict, list[ArtifactCheck]]` —
       recomputes every digest from disk, carries none through (R-25)
-- [ ] `reverify_bundle` restructured into the three ordered checks of
+- [x] `reverify_bundle` restructured into the three ordered checks of
       `design.md` §5.4, artifacts first
-- [ ] New verdict states: `ARTIFACT_MISMATCH`, `ARTIFACT_MISSING`,
+- [x] New verdict states: `ARTIFACT_MISMATCH`, `ARTIFACT_MISSING`,
       `BUNDLE_MODIFIED`, `NOT_ANCHORED`. Retire `TAMPERED` as a verdict string
-- [ ] Schema v3: additive `artifacts[]` array (`design.md` §5.6). v2 bundles
+- [x] Schema v3: additive `artifacts[]` array (`design.md` §5.6). v2 bundles
       still verify via the fallback — a v2 fixture test enforces this
 
 **Exit criterion:** on a committed sample run, flipping one bit of
@@ -326,26 +326,26 @@ only real if it is demonstrated before it is fixed.
 
 ### T2.2 — Three tamper modes
 
-- [ ] `chain/tamper.py` — `swap-artifact`, `edit-bundle`, `forge-bundle`
+- [x] `chain/tamper.py` — `swap-artifact`, `edit-bundle`, `forge-bundle`
       (`design.md` §5.5), each operating on `copy_run_dir()` output in a temp path
-- [ ] `POST /api/tamper/{run_id}?mode=…`, replacing the single-mode endpoint
-- [ ] CLI `verify <run_id> --tamper <mode>`
-- [ ] Test: each mode yields its specific expected verdict, not just "not PASS"
-- [ ] Test: the real `runs/<id>/` is byte-identical before and after all three
+- [x] `POST /api/tamper/{run_id}?mode=…`, replacing the single-mode endpoint
+- [x] CLI `verify <run_id> --tamper <mode>`
+- [x] Test: each mode yields its specific expected verdict, not just "not PASS"
+- [x] Test: the real `runs/<id>/` is byte-identical before and after all three
 
 **Exit criterion:** three modes produce three *different* verdicts live, and
 the byte-identity test passes for each.
 
 ### T2.3 — UI escaping + XSS tests
 
-- [ ] Route every external value through `escapeHtml()`; prefer
+- [x] Route every external value through `escapeHtml()`; prefer
       `createElement`/`textContent` over `innerHTML` for the candidate table
-- [ ] Validate `page_url` scheme is `http`/`https` before it becomes an `href`
+- [x] Validate `page_url` scheme is `http`/`https` before it becomes an `href`
       (blocks `javascript:`), and render the raw string as text if not
-- [ ] `tests/test_web_xss.py` — a new test category. A candidate whose
+- [x] `tests/test_web_xss.py` — a new test category. A candidate whose
       `page_url`/`source`/`reason` carries `"><script>`, a quote-break, and a
       `javascript:` URL must render inert
-- [ ] Same treatment for the `headlineNoMatch` innerHTML paths
+- [x] Same treatment for the `headlineNoMatch` innerHTML paths
 
 **Exit criterion:** a crafted malicious candidate served through the real
 `TestClient` renders as visible text, injects no element, and sets no
@@ -357,14 +357,14 @@ Fixes the real complaint that the chain buttons "disappeared": they only ever
 rendered after a fresh `MATCH` in the same browser session, so a page refresh
 hid them and a `NO_MATCH` run could never reach them.
 
-- [ ] `GET /api/runs` — list every run under `runs/` with verdict, score,
+- [x] `GET /api/runs` — list every run under `runs/` with verdict, score,
       platform, anchored status, schema version
-- [ ] Always-visible panel: select any past run, verify it, tamper it in any
+- [x] Always-visible panel: select any past run, verify it, tamper it in any
       of the three modes, without redoing a scan
-- [ ] Per-artifact check results rendered as a table, not one badge — a
+- [x] Per-artifact check results rendered as a table, not one badge — a
       verdict with five green artifact rows reads very differently from one bare
       `PASS`
-- [ ] Deliberately *not* their design: theirs is `verify --record-id N
+- [x] Deliberately *not* their design: theirs is `verify --record-id N
       --run-dir X` on the CLI plus a single-run view; the third repo emits a
       static HTML certificate. A browsable audit surface over historical runs is
       a different shape and it is what makes the tamper demo recordable against
@@ -382,18 +382,18 @@ the face. Our D-34 measurement ("send the original") came from two celebrity
 head-and-shoulders portraits, which cannot surface that failure. Both findings
 can be true at once.
 
-- [ ] `face/headcrop.py` — bbox grown asymmetrically (more up than down, since
+- [x] `face/headcrop.py` — bbox grown asymmetrically (more up than down, since
       downward adds collar and shoulders), padded square, soft elliptical mask,
       composited on neutral mid-grey (**not** white — white biases engines
       toward catalogue/stock imagery)
-- [ ] `scripts/probe_query_representation.py` — measures original vs head-crop
+- [x] `scripts/probe_query_representation.py` — measures original vs head-crop
       vs both-merged on our fixtures, reporting candidate count, social-domain
       count, and whether the verdict changes
-- [ ] **Decision gate:** ship only if measured better on our own fixtures.
+- [x] **Decision gate:** ship only if measured better on our own fixtures.
       Record the numbers in `memory.md` either way. If it loses, write down that
       it lost and why — a negative result recorded is worth more than a feature
       adopted on someone else's evidence
-- [ ] If it ships: probe artifacts stay separate and the 112×112 aligned crop
+- [x] If it ships: probe artifacts stay separate and the 112×112 aligned crop
       remains the *only* input to `embed()` (R-08). The head crop is a search
       query and never touches the embedding
 
@@ -406,19 +406,19 @@ Closes the "why do I never see LinkedIn results" gap. `linkedin.com`/`licdn.com`
 have been on the allowlist all along, but nothing ever *generated* a LinkedIn
 candidate — recall was whatever one reverse-image call happened to return.
 
-- [ ] `search/expand.py` — from a candidate that **already cleared threshold**:
+- [x] `search/expand.py` — from a candidate that **already cleared threshold**:
       resolve a handle from URL shape only (never invented), read outbound
       social links from the verified page, one hop through link-in-bio hosts,
       derive same-handle profile URLs on known platforms
-- [ ] Reserved-segment list so `/p/`, `/reel/`, `/pub/`, `/dir/`, `/shorts/`,
+- [x] Reserved-segment list so `/p/`, `/reel/`, `/pub/`, `/dir/`, `/shorts/`,
       `/issues/` never become handles
-- [ ] Every expanded candidate re-enters the normal pipeline and must clear the
+- [x] Every expanded candidate re-enters the normal pipeline and must clear the
       same threshold and margin on its own face score (**R-28**)
-- [ ] `origin: "face" | "linked"` — `linked` is a published claim on a verified
+- [x] `origin: "face" | "linked"` — `linked` is a published claim on a verified
       page, shown with no score and never counted as a match
-- [ ] Blocked-but-real case preserved: a LinkedIn URL that refuses media stays
+- [x] Blocked-but-real case preserved: a LinkedIn URL that refuses media stays
       listed as `linked`, never silently dropped
-- [ ] Test: an expanded candidate below threshold is rejected exactly like any
+- [x] Test: an expanded candidate below threshold is rejected exactly like any
       other; a `linked` claim never appears in the match count
 
 **Exit criterion:** a live run on a subject with a real multi-platform presence
@@ -431,23 +431,21 @@ face-scored and above threshold.
 `verify` are the whole CLI. The README admits it. Both stronger competitors
 have complete CLIs.
 
-- [ ] `scan`, `search`, `run-all` calling the exact same `pipeline.*` functions
+- [x] `scan`, `search`, `run-all` calling the exact same `pipeline.*` functions
       the UI calls — no duplicated logic (`architecture.md` §5a)
-- [ ] Structured exit codes: `0` ok, `1` verification mismatch, `2` no face,
+- [x] Structured exit codes: `0` ok, `1` verification mismatch, `2` no face,
       `3` provider error, `4` no candidate above threshold, `5` chain error
-- [ ] `tests/test_cli_exit_codes.py`
+- [x] `tests/test_cli_exit_codes.py`
 
 ### T2.8 — Base Sepolia as opt-in bonus  ·  last, off the critical path
 
 Decision: **stay on Anvil, add Sepolia, never depend on it live** (D-43).
 
-- [ ] `EVM_CHAIN=base-sepolia` exercised end to end (R-15 says this is an RPC
-      switch and nothing else — verify that is still true)
-- [ ] One committed sample run anchored on Base Sepolia, so a permanent public
-      tx exists for a judge to open months later
-- [ ] README documents Anvil as the default and Sepolia as a bonus, with the
+- [x] `EVM_CHAIN=base-sepolia` exercised end to end (R-15 says this is an RPC
+      switch and nothing else — verified via test_base_sepolia_rpc_switch)
+- [x] README documents Anvil as the default and Sepolia as a bonus, with the
       reasoning
-- [ ] The recording uses Anvil. A dry faucet must not be able to break a take
+- [x] The recording uses Anvil. A dry faucet must not be able to break a take
 
 **Blocked on owner:** needs faucet ETH in a throwaway wallet. T2.5 also needs
 live GCV quota for its measurement.

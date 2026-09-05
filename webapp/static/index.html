@@ -259,6 +259,50 @@
     </div>
   </div>
 
+  <!-- T2.4 (7 Sep 2026): Evidence Explorer. Always visible on page load,
+       allowing past runs (like the committed sample runs) to be inspected, verified,
+       and tamper-tested in all 3 modes without running a new search first. -->
+  <div class="panel" style="margin-top:24px;" id="explorerPanel">
+    <h2>3. Evidence Explorer — historical runs &amp; tamper testing</h2>
+    <div style="display:flex; gap:12px; align-items:center; margin-bottom:14px; flex-wrap:wrap;">
+      <label for="runsSelect" style="font-size:13px; color:var(--text-dim);">Select Past Run:</label>
+      <select id="runsSelect" style="background:var(--panel-alt); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:6px 12px; font-size:13px; min-width:280px;">
+        <option value="">Loading past runs...</option>
+      </select>
+      <button id="refreshRunsBtn" style="width:auto; margin-top:0; padding:6px 14px;">Refresh List</button>
+    </div>
+
+    <div id="selectedRunCard" style="display:none; background:var(--panel-alt); border:1px solid var(--border); border-radius:8px; padding:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+        <div>
+          <h3 id="expRunId" style="margin:0 0 6px; font-size:15px; font-family:ui-monospace, monospace;">—</h3>
+          <div id="expMeta" style="font-size:13px; color:var(--text-dim);"></div>
+        </div>
+        <div id="expVerdictBadge"></div>
+      </div>
+
+      <div style="margin:14px 0;">
+        <h4 style="font-size:12px; text-transform:uppercase; color:var(--text-dim); margin:0 0 8px;">Artifacts On Disk</h4>
+        <table id="expArtifactsTable" style="margin-bottom:14px;">
+          <thead>
+            <tr><th>File</th><th>Size</th><th>SHA-256 Digest</th><th>Status</th></tr>
+          </thead>
+          <tbody id="expArtifactsBody"></tbody>
+        </table>
+      </div>
+
+      <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
+        <button id="expVerifyBtn" class="secondary" style="width:auto; margin-top:0;">Verify Against Chain</button>
+        <button id="expTamperArtifactBtn" class="danger" style="width:auto; margin-top:0;">Tamper Mode 1: Swap Artifact</button>
+        <button id="expTamperBundleBtn" class="danger" style="width:auto; margin-top:0;">Tamper Mode 2: Edit Bundle</button>
+        <button id="expTamperForgeBtn" class="danger" style="width:auto; margin-top:0;">Tamper Mode 3: Forge Bundle</button>
+      </div>
+
+      <div id="expActionStatus" style="margin-top:12px; font-size:13px; color:var(--text-dim);"></div>
+      <div id="expActionResult" style="margin-top:8px; font-family:ui-monospace, monospace; font-size:12px; white-space:pre-wrap; background:#0d1117; padding:10px; border-radius:6px; border:1px solid var(--border); display:none;"></div>
+    </div>
+  </div>
+
   <script src="/static/app.js"></script>
 </body>
 </html>

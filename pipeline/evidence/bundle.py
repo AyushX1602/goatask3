@@ -66,7 +66,7 @@ from pipeline.face.types import Embedding, LivenessResult
 from pipeline.verify.allowlist import content_kind
 from pipeline.verify.matcher import MatchResult
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # match.verified_against — every value that can be emitted. Kept as a
 # frozenset so a future addition to _classify_verified_against is forced
@@ -191,8 +191,19 @@ def build_evidence(
     # else — see the module docstring's v2 changelog entry.
     metadata_source = "bluesky_appview" if best.candidate.source == "bluesky" and post_meta else None
 
+    ext = detect_image_extension(image_bytes)
+    img_sha = image_sha256(image_bytes)
+    img_phash = image_phash(image_bytes)
+
     data = {
         "schema_version": SCHEMA_VERSION,
+        "artifacts": [
+            {
+                "path": f"match_image{ext}",
+                "sha256": img_sha,
+                "phash": img_phash,
+            }
+        ],
         "probe": {
             "face_commitment": face_commitment_hex(embedding, salt),  # R-01: never the raw vector
             "liveness_passed": bool(liveness.passed) if is_live_capture else True,
@@ -203,8 +214,8 @@ def build_evidence(
         "match": {
             "page_url": best.candidate.page_url,
             "image_url": best.candidate.image_url,
-            "image_sha256": image_sha256(image_bytes),
-            "image_phash": image_phash(image_bytes),
+            "image_sha256": img_sha,
+            "image_phash": img_phash,
             "verified_against": resolved_verified_against,
             "match_kind": best.candidate.match_kind or "unknown",
             "provider": best.candidate.source,

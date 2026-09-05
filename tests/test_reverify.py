@@ -35,7 +35,20 @@ requires_anvil = pytest.mark.skipif(
 )
 
 
-def _make_bundle(tag: str) -> EvidenceBundle:
+import io
+from pathlib import Path
+import imagehash
+from PIL import Image
+
+REAL_FIXTURE_PATH = Path(__file__).parent / "fixtures" / "obama1.jpg"
+REAL_IMG_BYTES = REAL_FIXTURE_PATH.read_bytes()
+REAL_IMG_PHASH = str(imagehash.phash(Image.open(io.BytesIO(REAL_IMG_BYTES))))
+
+
+def _make_bundle(tag: str, img_bytes: bytes = REAL_IMG_BYTES) -> EvidenceBundle:
+    import hashlib
+
+    phash = REAL_IMG_PHASH if img_bytes == REAL_IMG_BYTES else "1122334455667788"
     data = {
         "schema_version": 2,
         "probe": {
@@ -48,8 +61,8 @@ def _make_bundle(tag: str) -> EvidenceBundle:
         "match": {
             "page_url": "https://www.youtube.com/watch?v=nDj8MIyitUs",
             "image_url": "https://i.ytimg.com/vi/nDj8MIyitUs/maxresdefault.jpg",
-            "image_sha256": "33" * 32,
-            "image_phash": "1122334455667788",
+            "image_sha256": hashlib.sha256(img_bytes).hexdigest(),
+            "image_phash": phash,
             "verified_against": "search_engine_cache",
             "provider": "gcv_web_detection",
             "score_bps": 9618,
@@ -97,9 +110,9 @@ def test_full_disk_round_trip_pass_then_tampered(client, tmp_path):
 
     bundle_path = tmp_path / "evidence.json"
     bundle_path.write_bytes(bundle.canonical_json)
-    # In real use this comes from the sibling anchor.json written at
-    # anchor time (architecture.md 7) — recorded here explicitly since
-    # this test IS the anchor step.
+    # R-25: artifact must be present on disk for check 1 to pass
+    (tmp_path / "match_image.jpg").write_bytes(REAL_IMG_BYTES)
+
     anchored_hash = bundle.evidence_hash_hex
 
     report = reverify_bundle(bundle_path, client=client, expected_hash=anchored_hash)
@@ -107,13 +120,13 @@ def test_full_disk_round_trip_pass_then_tampered(client, tmp_path):
     assert report.on_chain.exists is True
     assert report.on_chain.score_bps == 9618
 
-    # THE tamper: flip one character on disk.
+    # THE tamper: flip one character in evidence.json on disk.
     tampered = bundle.canonical_json.replace(b"9618", b"9619")
     assert tampered != bundle.canonical_json
     bundle_path.write_bytes(tampered)
 
     report2 = reverify_bundle(bundle_path, client=client, expected_hash=anchored_hash)
-    assert report2.overall == "TAMPERED", report2.detail
+    assert report2.overall == "BUNDLE_MODIFIED", report2.detail
     assert report2.recomputed_hash != report.recomputed_hash
 
 
@@ -122,10 +135,12 @@ def test_never_anchored_bundle_reports_not_anchored(client, tmp_path):
     bundle = _make_bundle(tag=f"never-{id(client)}-unanchored")
     bundle_path = tmp_path / "evidence.json"
     bundle_path.write_bytes(bundle.canonical_json)
+    (tmp_path / "match_image.jpg").write_bytes(REAL_IMG_BYTES)
 
     report = reverify_bundle(bundle_path, client=client)
     assert report.overall == "NOT_ANCHORED"
     assert report.on_chain.exists is False
+
 
 
 def test_missing_file_reports_error(client, tmp_path):
@@ -139,3 +154,27 @@ def test_invalid_json_reports_error(client, tmp_path):
     p.write_text("{not valid json", encoding="utf-8")
     report = reverify_bundle(p, client=client)
     assert report.overall == "ERROR"
+
+
+@requires_anvil
+def test_swapped_artifact_detected_as_artifact_mismatch(client, tmp_path):
+    """Exit criterion for T2.1 / R-25: flipping one byte of match_image.jpg
+    in a copied run dir MUST report ARTIFACT_MISMATCH, not PASS."""
+    import shutil
+    from pipeline.config import RUNS_DIR
+
+    sample_dir = RUNS_DIR / "2026-09-05T18-07-40Z"
+    run_dir = tmp_path / "run"
+    shutil.copytree(sample_dir, run_dir)
+
+    img_path = run_dir / "match_image.jpg"
+    data = bytearray(img_path.read_bytes())
+    data[100] ^= 0xFF
+    img_path.write_bytes(data)
+
+    anchor_data = json.loads((run_dir / "anchor.json").read_text(encoding="utf-8"))
+    expected_hash = anchor_data["evidence_hash"]
+
+    report = reverify_bundle(run_dir / "evidence.json", client=client, expected_hash=expected_hash)
+    assert report.overall == "ARTIFACT_MISMATCH"
+

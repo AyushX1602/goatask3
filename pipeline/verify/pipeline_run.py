@@ -289,6 +289,7 @@ def run_pipeline(
     allowed_domains: set[str] | None = None,
     max_workers: int = 8,
     public_image_url: str | None = None,
+    expand_profiles: bool = True,
 ) -> PipelineResult:
     """The single shared verification loop (F4).
 
@@ -469,6 +470,65 @@ def run_pipeline(
     match = score_candidates(
         scored, policy, allowed_domains=allowed_domains, prerejected=prerejected
     )
+
+    # T2.6 / R-28: Profile expansion, post-threshold and face-gated
+    if expand_profiles and match.best is not None:
+        from pipeline.search.expand import expand_verified_candidates
+
+        verified_cands = [match.best.candidate] + [
+            r.candidate for r in match.all_scored if r.decision == "corroborating"
+        ]
+
+        def _get_html(url: str) -> tuple[bool, bytes]:
+            try:
+                resp = http.get(url, timeout=5.0)
+                return getattr(resp, "ok", False), getattr(resp, "content", b"")
+            except Exception:
+                return False, b""
+
+        expanded = expand_verified_candidates(verified_cands, http_get_fn=_get_html)
+        if expanded:
+            for exp_cand in expanded:
+                if exp_cand.origin == "linked" or not exp_cand.image_url:
+                    prerejected.append(
+                        (
+                            exp_cand,
+                            "linked-claim",
+                            "claimed profile link on verified page (unscored)",
+                        )
+                    )
+                else:
+                    outcome = _resolve_candidate_image(http, exp_cand)
+                    if outcome.image_bytes is not None:
+                        images[outcome.url] = outcome.image_bytes
+                        resolved_cand = replace(exp_cand, image_url=outcome.url)
+                        score, faces_found, prereject_reason, largest_face_px = _score_one_candidate(
+                            detector, embedder, probe_vec, outcome.image_bytes, min_face_px
+                        )
+                        if outcome is not None:
+                            candidate_diagnostics[resolved_cand.image_url] = outcome.diagnostics
+                        if prereject_reason:
+                            prerejected.append(
+                                (
+                                    resolved_cand,
+                                    "linked-claim",
+                                    f"face verification unavailable ({prereject_reason}), preserved as linked claim",
+                                )
+                            )
+                        else:
+                            scored.append((resolved_cand, score, faces_found))
+                    else:
+                        prerejected.append(
+                            (
+                                exp_cand,
+                                "linked-claim",
+                                "media unavailable on expanded profile, preserved as linked claim",
+                            )
+                        )
+
+            match = score_candidates(
+                scored, policy, allowed_domains=allowed_domains, prerejected=prerejected
+            )
 
     best_image_bytes = None
     if match.best is not None:

@@ -48,6 +48,7 @@ def build_audit(
                 "page_url": r.candidate.page_url,
                 "image_url": r.candidate.image_url,
                 "source": r.candidate.source,
+                "origin": getattr(r.candidate, "origin", "face"),
                 "faces_found": r.faces_found,
                 "score": r.score,
                 "decision": r.decision,

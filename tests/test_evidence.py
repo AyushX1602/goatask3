@@ -13,7 +13,6 @@ import pytest
 
 from pathlib import Path
 
-from pipeline.config import MatchPolicy
 from pipeline.evidence.bundle import build_evidence, image_sha256
 from pipeline.evidence.canonical import (
     NonCanonicalValueError,
@@ -24,7 +23,7 @@ from pipeline.evidence.canonical import (
     round_trip_bytes,
     sha256_hex,
 )
-from pipeline.evidence.commitment import face_commitment, face_commitment_hex, quantise
+from pipeline.evidence.commitment import face_commitment, quantise
 from pipeline.face.types import Embedding, LivenessResult
 from pipeline.search.base import Candidate
 from pipeline.verify.matcher import MatchResult, ScoredCandidate
@@ -199,7 +198,7 @@ def test_build_evidence_from_a_real_shaped_match():
         captured_at=1757000000,
     )
 
-    assert bundle.data["schema_version"] == 2
+    assert bundle.data["schema_version"] == 3
     assert bundle.data["match"]["page_url"] == "https://www.instagram.com/p/Dc5KuZdDZiX/"
     assert bundle.data["match"]["score_bps"] == 7685
     assert bundle.data["match"]["image_sha256"] == image_sha256(_FAKE_IMAGE_BYTES)

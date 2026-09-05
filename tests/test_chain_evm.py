@@ -187,3 +187,16 @@ def test_missing_contract_address_raises_a_clear_error(monkeypatch):
     client = EvmClient(rpc_url=ANVIL_RPC)
     with pytest.raises(ContractNotDeployedError):
         client.verify("0x" + "00" * 32)
+
+
+def test_base_sepolia_rpc_switch(monkeypatch):
+    """R-15: EVM_CHAIN=base-sepolia automatically switches RPC endpoint to https://sepolia.base.org."""
+    monkeypatch.setenv("EVM_CHAIN", "base-sepolia")
+    monkeypatch.setenv("EVM_PRIVATE_KEY", "0x" + "1" * 64)
+    monkeypatch.setenv("EVM_CONTRACT_ADDRESS", "0x5FbDB2315678afecb367f032d93F642f64180aa3")
+    monkeypatch.delenv("EVM_RPC_URL", raising=False)
+
+    client = EvmClient()
+    assert client.chain_name == "base-sepolia"
+    assert client.rpc_url == "https://sepolia.base.org"
+

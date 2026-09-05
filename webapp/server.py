@@ -382,11 +382,12 @@ class AnchorResponse(BaseModel):
 
 
 class VerifyResponse(BaseModel):
-    overall: str  # "PASS" | "TAMPERED" | "NOT_ANCHORED" | "ERROR"
+    overall: str  # "PASS" | "ARTIFACT_MISMATCH" | "ARTIFACT_MISSING" | "BUNDLE_MODIFIED" | "NOT_ANCHORED" | "ERROR"
     detail: str
     recomputed_hash: str
     anchored_hash: str | None = None
     on_chain_exists: bool | None = None
+    artifact_checks: list[dict] = []
 
 
 class TamperResponse(BaseModel):
@@ -397,6 +398,24 @@ class TamperResponse(BaseModel):
     tampered_field: str
     original_value: str
     tampered_value: str
+    mode: str = "swap-artifact"
+    recomputed_hash: str | None = None
+    anchored_hash: str | None = None
+    artifact_checks: list[dict] = []
+
+
+class RunSummary(BaseModel):
+    run_id: str
+    verdict: str | None = None
+    score_bps: int | None = None
+    platform: str | None = None
+    content_kind: str | None = None
+    has_evidence: bool = False
+    has_anchor: bool = False
+    has_audit: bool = False
+    schema_version: int | None = None
+    evidence_hash: str | None = None
+    tx_hash: str | None = None
 
 
 def _load_evidence_bundle(run_id: str):
@@ -476,64 +495,191 @@ def verify_run(run_id: str) -> VerifyResponse:
         recomputed_hash=report.recomputed_hash,
         anchored_hash=report.anchored_hash,
         on_chain_exists=report.on_chain.exists if report.on_chain else None,
+        artifact_checks=[
+            {
+                "path": c.path,
+                "match": c.match,
+                "expected_sha256": c.expected_sha256,
+                "actual_sha256": c.actual_sha256,
+                "detail": c.detail,
+            }
+            for c in report.artifact_checks
+        ],
     )
 
 
 @app.post("/api/tamper/{run_id}", response_model=TamperResponse)
-def tamper_run(run_id: str) -> TamperResponse:
+def tamper_run(run_id: str, mode: str = "swap-artifact") -> TamperResponse:
     """Demonstrates the tamper-detection property WITHOUT mutating the
-    real evidence.json: builds an in-memory scratch copy of the bundle
-    with one field changed (match.score_bps incremented by 1), runs it
-    through the SAME reverify_bundle() the real /api/verify/{run_id} and
-    `python -m pipeline verify` use, and reports the result. The file on
-    disk is never touched — a click-to-demonstrate button beats hand-
-    editing JSON on a single-take recording, but it must not risk leaving
-    the real run corrupted if something goes wrong mid-demo.
+    real run on disk: copies the run directory to a temporary location, applies
+    the requested tamper mode (swap-artifact, edit-bundle, forge-bundle),
+    and runs reverify_bundle on the copy.
     """
-    import tempfile
+    from pipeline.chain.tamper import tamper_run as run_tamper_demo
 
     run_dir = RUNS_DIR / run_id
-    bundle_path = run_dir / "evidence.json"
-    anchor_path = run_dir / "anchor.json"
-
-    if not bundle_path.exists():
+    if not run_dir.exists() or not (run_dir / "evidence.json").exists():
         return TamperResponse(
-            overall="ERROR", detail=f"no evidence bundle at {bundle_path}",
-            tampered_field="", original_value="", tampered_value="",
+            overall="ERROR",
+            detail=f"no evidence bundle found in {run_dir}",
+            tampered_field="",
+            original_value="",
+            tampered_value="",
+            mode=mode,
         )
-
-    data = json.loads(bundle_path.read_text(encoding="utf-8"))
-    original_score = data["match"]["score_bps"]
-    tampered_score = original_score + 1
-    data["match"]["score_bps"] = tampered_score
-
-    from pipeline.evidence.canonical import canonical_bytes
-
-    tampered_canonical = canonical_bytes(data)
-
-    expected_hash = None
-    if anchor_path.exists():
-        expected_hash = json.loads(anchor_path.read_text(encoding="utf-8"))["evidence_hash"]
-
-    with tempfile.NamedTemporaryFile(mode="wb", suffix=".json", delete=False) as tmp:
-        tmp.write(tampered_canonical)
-        tmp_path = Path(tmp.name)
 
     try:
-        report = reverify_bundle(tmp_path, client=EvmClient(), expected_hash=expected_hash)
+        rep = run_tamper_demo(run_dir, mode=mode, client=EvmClient())
     except Exception as e:
         return TamperResponse(
-            overall="ERROR", detail=f"{type(e).__name__}: {e}",
-            tampered_field="match.score_bps",
-            original_value=str(original_score), tampered_value=str(tampered_score),
+            overall="ERROR",
+            detail=f"tamper execution failed: {type(e).__name__}: {e}",
+            tampered_field="tamper",
+            original_value="",
+            tampered_value="",
+            mode=mode,
         )
-    finally:
-        tmp_path.unlink(missing_ok=True)
 
     return TamperResponse(
-        overall=report.overall,
-        detail=report.detail,
-        tampered_field="match.score_bps",
-        original_value=str(original_score),
-        tampered_value=str(tampered_score),
+        overall=rep.overall,
+        detail=rep.detail,
+        tampered_field=rep.tampered_target,
+        original_value=rep.original_value,
+        tampered_value=rep.tampered_value,
+        mode=rep.mode,
+        recomputed_hash=rep.recomputed_hash,
+        anchored_hash=rep.anchored_hash,
+        artifact_checks=[
+            {
+                "path": c.path,
+                "match": c.match,
+                "expected_sha256": c.expected_sha256,
+                "actual_sha256": c.actual_sha256,
+                "detail": c.detail,
+            }
+            for c in rep.artifact_checks
+        ],
     )
+
+
+@app.get("/api/runs", response_model=list[RunSummary])
+def list_runs() -> list[RunSummary]:
+    """Lists all runs present under runs/, sorted newest first.
+    Provides the browsable audit surface for Evidence Explorer (T2.4).
+    """
+    if not RUNS_DIR.exists():
+        return []
+
+    summaries = []
+    for d in sorted(RUNS_DIR.iterdir(), reverse=True):
+        if not d.is_dir():
+            continue
+        run_id = d.name
+        ev_path = d / "evidence.json"
+        anc_path = d / "anchor.json"
+        aud_path = d / "audit.json"
+
+        verdict = None
+        score_bps = None
+        platform = None
+        content_kind = None
+        schema_ver = None
+        evidence_hash = None
+        tx_hash = None
+
+        if ev_path.exists():
+            try:
+                ev = json.loads(ev_path.read_text(encoding="utf-8"))
+                schema_ver = ev.get("schema_version")
+                score_bps = ev.get("match", {}).get("score_bps")
+                platform = ev.get("post", {}).get("platform")
+                content_kind = ev.get("post", {}).get("content_kind")
+                verdict = "MATCH"
+            except Exception:
+                pass
+
+        if aud_path.exists():
+            try:
+                aud = json.loads(aud_path.read_text(encoding="utf-8"))
+                if "verdict" in aud:
+                    verdict = aud["verdict"]
+            except Exception:
+                pass
+
+        if anc_path.exists():
+            try:
+                anc = json.loads(anc_path.read_text(encoding="utf-8"))
+                evidence_hash = anc.get("evidence_hash")
+                tx_hash = anc.get("tx_hash")
+            except Exception:
+                pass
+
+        summaries.append(
+            RunSummary(
+                run_id=run_id,
+                verdict=verdict,
+                score_bps=score_bps,
+                platform=platform,
+                content_kind=content_kind,
+                has_evidence=ev_path.exists(),
+                has_anchor=anc_path.exists(),
+                has_audit=aud_path.exists(),
+                schema_version=schema_ver,
+                evidence_hash=evidence_hash,
+                tx_hash=tx_hash,
+            )
+        )
+    return summaries
+
+
+@app.get("/api/run/{run_id}")
+def get_run_detail(run_id: str):
+    """Returns detailed bundle, anchor, audit, and disk artifact list for run_id."""
+    run_dir = RUNS_DIR / run_id
+    if not run_dir.exists():
+        return {"error": f"run {run_id} not found"}
+
+    bundle = None
+    anchor = None
+    audit = None
+    artifacts = []
+
+    ev_path = run_dir / "evidence.json"
+    if ev_path.exists():
+        try:
+            bundle = json.loads(ev_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    anc_path = run_dir / "anchor.json"
+    if anc_path.exists():
+        try:
+            anchor = json.loads(anc_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    aud_path = run_dir / "audit.json"
+    if aud_path.exists():
+        try:
+            audit = json.loads(aud_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    import hashlib
+    for f in sorted(run_dir.iterdir()):
+        if f.is_file():
+            b = f.read_bytes()
+            artifacts.append({
+                "name": f.name,
+                "size_bytes": len(b),
+                "sha256": hashlib.sha256(b).hexdigest(),
+            })
+
+    return {
+        "run_id": run_id,
+        "bundle": bundle,
+        "anchor": anchor,
+        "audit": audit,
+        "artifacts": artifacts,
+    }
+

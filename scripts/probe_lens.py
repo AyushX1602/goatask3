@@ -92,7 +92,7 @@ def analyse(label: str, data: dict) -> None:
             print(f"    * {r.get('query')}")
 
     if data.get("knowledge_graph"):
-        print(f"\n  --- knowledge_graph present ---")
+        print("\n  --- knowledge_graph present ---")
         print(f"    {json.dumps(data['knowledge_graph'])[:400]}")
 
     # Q2: social domains
@@ -100,7 +100,7 @@ def analyse(label: str, data: dict) -> None:
     all_links += [(o.get("link", ""), o.get("title", ""), "organic") for o in org]
 
     domains = Counter(registrable(l) for l, _, _ in all_links if l)
-    print(f"\n  --- top 15 domains returned ---")
+    print("\n  --- top 15 domains returned ---")
     for dom, n in domains.most_common(15):
         flag = "  <-- SOCIAL" if dom in SOCIAL_DOMAINS else ""
         print(f"    {n:3d}  {dom}{flag}")
@@ -113,7 +113,7 @@ def analyse(label: str, data: dict) -> None:
         print(f"           {link[:110]}")
 
     # Q1: are titles carrying a name?
-    print(f"\n  --- first 8 visual_match titles (name signal) ---")
+    print("\n  --- first 8 visual_match titles (name signal) ---")
     for m in vm[:8]:
         has_img = "img" if m.get("thumbnail") or m.get("image") else "NO-IMG"
         print(f"    [{has_img}] {(m.get('title') or '')[:88]}")
