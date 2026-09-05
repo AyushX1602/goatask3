@@ -336,3 +336,179 @@ def test_bundle_module_docstring_does_not_claim_an_unimplemented_schema():
         f"docstring mentions a schema version higher than SCHEMA_VERSION={SCHEMA_VERSION}: "
         f"{versions_mentioned}"
     )
+
+
+# --- T0.1 remainder: match_kind, metadata_source, derived verified_against ---
+
+
+def test_verified_against_is_derived_from_the_real_fetched_host_not_a_default():
+    """No caller-supplied default: search_engine_cache only when the host
+    is actually a Google-cache host; everything else is platform_origin."""
+    match = _match_result(page_url="https://www.youtube.com/watch?v=nDj8MIyitUs")
+    bundle = build_evidence(
+        run_id="x", embedding=_embedding(), salt=b"s" * 32, liveness=_liveness(),
+        is_live_capture=False, match=match, providers_queried=[], degraded_closed_corpus=False,
+        identity_signals=[], candidates_examined=1, pipeline_version="0.1.0",
+        image_bytes=REAL_IMAGE_BYTES,
+    )
+    # _match_result()'s candidate image_url is i.ytimg.com -> platform_origin
+    assert bundle.data["match"]["verified_against"] == "platform_origin"
+
+
+def test_verified_against_detects_gstatic_cache_host():
+    from pipeline.search.base import Candidate
+    from pipeline.verify.matcher import MatchResult, ScoredCandidate
+
+    cand = Candidate(
+        image_url="https://encrypted-tbn0.gstatic.com/images?q=tbn:abc",
+        page_url="https://www.instagram.com/p/abc/",
+        source="gcv_web_detection",
+    )
+    other = Candidate(image_url="https://x.test/2", page_url="https://x.test/2", source="gcv_web_detection")
+    best = ScoredCandidate(cand, 0.9, 1, "ACCEPT", "ok")
+    runner_up = ScoredCandidate(other, 0.05, 1, "reject-below-threshold", "low")
+    match = MatchResult(best=best, runner_up=runner_up, all_scored=[best, runner_up],
+                         threshold=0.42, margin_required=0.08, verdict="MATCH")
+
+    bundle = build_evidence(
+        run_id="x", embedding=_embedding(), salt=b"s" * 32, liveness=_liveness(),
+        is_live_capture=False, match=match, providers_queried=[], degraded_closed_corpus=False,
+        identity_signals=[], candidates_examined=1, pipeline_version="0.1.0",
+        image_bytes=REAL_IMAGE_BYTES,
+    )
+    assert bundle.data["match"]["verified_against"] == "search_engine_cache"
+
+
+def test_verified_against_explicit_override_must_be_a_known_value():
+    match = _match_result()
+    with pytest.raises(ValueError, match="verified_against"):
+        build_evidence(
+            run_id="x", embedding=_embedding(), salt=b"s" * 32, liveness=_liveness(),
+            is_live_capture=False, match=match, providers_queried=[], degraded_closed_corpus=False,
+            identity_signals=[], candidates_examined=1, pipeline_version="0.1.0",
+            image_bytes=REAL_IMAGE_BYTES, verified_against="not_a_real_value",
+        )
+
+
+def test_verified_against_explicit_override_is_honoured():
+    match = _match_result()
+    bundle = build_evidence(
+        run_id="x", embedding=_embedding(), salt=b"s" * 32, liveness=_liveness(),
+        is_live_capture=False, match=match, providers_queried=[], degraded_closed_corpus=False,
+        identity_signals=[], candidates_examined=1, pipeline_version="0.1.0",
+        image_bytes=REAL_IMAGE_BYTES, verified_against="platform_api",
+    )
+    assert bundle.data["match"]["verified_against"] == "platform_api"
+
+
+def test_match_kind_defaults_to_unknown_not_empty_string():
+    """Candidate.match_kind defaults to "" (search/base.py); the bundle
+    must normalise that to the honest enum value "unknown", never leave
+    an empty string sitting in a field that looks like an enum."""
+    match = _match_result()
+    bundle = build_evidence(
+        run_id="x", embedding=_embedding(), salt=b"s" * 32, liveness=_liveness(),
+        is_live_capture=False, match=match, providers_queried=[], degraded_closed_corpus=False,
+        identity_signals=[], candidates_examined=1, pipeline_version="0.1.0",
+        image_bytes=REAL_IMAGE_BYTES,
+    )
+    assert bundle.data["match"]["match_kind"] == "unknown"
+
+
+def test_match_kind_passes_through_when_set():
+    from pipeline.search.base import Candidate
+    from pipeline.verify.matcher import MatchResult, ScoredCandidate
+
+    cand = Candidate(
+        image_url="https://avatars.githubusercontent.com/u/1?v=4",
+        page_url="https://github.com/someone", source="gcv_web_detection", match_kind="full",
+    )
+    other = Candidate(image_url="https://x.test/2", page_url="https://x.test/2", source="gcv_web_detection")
+    best = ScoredCandidate(cand, 0.9, 1, "ACCEPT", "ok")
+    runner_up = ScoredCandidate(other, 0.05, 1, "reject-below-threshold", "low")
+    match = MatchResult(best=best, runner_up=runner_up, all_scored=[best, runner_up],
+                         threshold=0.42, margin_required=0.08, verdict="MATCH")
+    bundle = build_evidence(
+        run_id="x", embedding=_embedding(), salt=b"s" * 32, liveness=_liveness(),
+        is_live_capture=False, match=match, providers_queried=[], degraded_closed_corpus=False,
+        identity_signals=[], candidates_examined=1, pipeline_version="0.1.0",
+        image_bytes=REAL_IMAGE_BYTES,
+    )
+    assert bundle.data["match"]["match_kind"] == "full"
+
+
+def test_metadata_source_null_when_provider_supplies_no_post_meta():
+    match = _match_result()  # gcv_web_detection candidate, no post_meta
+    bundle = build_evidence(
+        run_id="x", embedding=_embedding(), salt=b"s" * 32, liveness=_liveness(),
+        is_live_capture=False, match=match, providers_queried=[], degraded_closed_corpus=False,
+        identity_signals=[], candidates_examined=1, pipeline_version="0.1.0",
+        image_bytes=REAL_IMAGE_BYTES,
+    )
+    assert bundle.data["post"]["metadata_source"] is None
+
+
+def test_metadata_source_is_bluesky_appview_when_bluesky_supplied_post_meta():
+    from pipeline.search.base import Candidate
+    from pipeline.verify.matcher import MatchResult, ScoredCandidate
+
+    cand = Candidate(
+        image_url="https://cdn.bsky.app/img/feed_thumbnail/plain/abc.jpg",
+        page_url="https://bsky.app/profile/someone/post/abc",
+        source="bluesky",
+        post_meta={"platform": "bluesky", "author_handle": "someone"},
+    )
+    other = Candidate(image_url="https://x.test/2", page_url="https://x.test/2", source="bluesky")
+    best = ScoredCandidate(cand, 0.9, 1, "ACCEPT", "ok")
+    runner_up = ScoredCandidate(other, 0.05, 1, "reject-below-threshold", "low")
+    match = MatchResult(best=best, runner_up=runner_up, all_scored=[best, runner_up],
+                         threshold=0.42, margin_required=0.08, verdict="MATCH")
+    bundle = build_evidence(
+        run_id="x", embedding=_embedding(), salt=b"s" * 32, liveness=_liveness(),
+        is_live_capture=False, match=match, providers_queried=[], degraded_closed_corpus=False,
+        identity_signals=[], candidates_examined=1, pipeline_version="0.1.0",
+        image_bytes=REAL_IMAGE_BYTES,
+    )
+    assert bundle.data["post"]["metadata_source"] == "bluesky_appview"
+
+
+# --- T0.3 remainder: malformed (not just empty) image_sha256 must also fail ---
+
+
+def test_evm_anchor_rejects_malformed_image_sha256_too_short():
+    bundle = _bundle_with_raw_match_overrides(image_sha256="ab" * 10)  # 20 hex chars, not 64
+    monkeypatched_client = _anvil_client_for_malformed_test()
+    with pytest.raises(ValueError, match="malformed"):
+        monkeypatched_client.anchor(bundle)
+
+
+def test_evm_anchor_rejects_malformed_image_sha256_non_hex():
+    bundle = _bundle_with_raw_match_overrides(image_sha256="zz" * 32)  # right length, not hex
+    monkeypatched_client = _anvil_client_for_malformed_test()
+    with pytest.raises(ValueError, match="malformed"):
+        monkeypatched_client.anchor(bundle)
+
+
+def _anvil_client_for_malformed_test() -> EvmClient:
+    import os
+
+    os.environ["EVM_CHAIN"] = "anvil"
+    os.environ["EVM_RPC_URL"] = "http://127.0.0.1:8545"
+    os.environ["EVM_CONTRACT_ADDRESS"] = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+    os.environ.pop("EVM_PRIVATE_KEY", None)
+    return EvmClient()
+
+
+# --- T0.2 remainder: detect_image_extension ---
+
+
+def test_detect_image_extension_from_real_jpeg_bytes():
+    from pipeline.evidence.bundle import detect_image_extension
+
+    assert detect_image_extension(REAL_IMAGE_BYTES) == ".jpg"
+
+
+def test_detect_image_extension_falls_back_to_jpg_on_undecodable_bytes():
+    from pipeline.evidence.bundle import detect_image_extension
+
+    assert detect_image_extension(b"not an image") == ".jpg"

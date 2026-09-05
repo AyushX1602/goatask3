@@ -338,3 +338,41 @@ def test_serpapi_organic_result_prefers_images_array_over_thumbnail():
     cands, _ = parse_serpapi_lens(payload)
     assert cands[0].image_url == "https://img.test/full.jpg"
     assert cands[0].raw["image_field_used"] == "images[0]"
+
+
+# ---------------- T1.2 remainder: match_kind defaults, "page" kind, SerpApi ----------------
+
+
+def test_candidate_match_kind_defaults_to_unknown():
+    from pipeline.search.base import Candidate
+
+    c = Candidate(image_url="https://x.test/1", page_url="https://x.test/1", source="fake")
+    assert c.match_kind == "unknown"
+
+
+def test_gcv_page_with_no_image_gets_match_kind_page():
+    """A pagesWithMatchingImages entry with no fullMatchingImages/
+    partialMatchingImages of its own is a page-level signal only — a
+    distinct, honestly-labelled weak signal, not "unknown" (which would
+    mean nobody classified it) and not "" (which reads as unset data)."""
+    payload = {
+        "webDetection": {
+            "pagesWithMatchingImages": [
+                {"url": "https://open.spotify.com/track/abc", "pageTitle": "a track"},
+            ]
+        }
+    }
+    cands, _ = parse_gcv(payload)
+    assert cands[0].match_kind == "page"
+
+
+def test_serpapi_visual_match_gets_match_kind_similar():
+    payload = {"visual_matches": [{"link": "https://a.test/1", "image": "https://img.test/full.jpg"}]}
+    cands, _ = parse_serpapi_lens(payload)
+    assert cands[0].match_kind == "similar"
+
+
+def test_serpapi_organic_result_defaults_to_unknown_match_kind():
+    payload = {"organic_results": [{"link": "https://a.test/1", "thumbnail": "https://img.test/t.jpg"}]}
+    cands, _ = parse_serpapi_lens(payload)
+    assert cands[0].match_kind == "unknown"

@@ -23,9 +23,21 @@ mean regenerating every committed bundle and its anchored on-chain hash:
     library and Hamming-distance convention as verify/dedupe.py, so a
     later re-fetch check's "perceptually identical" verdict means the
     same thing here as it does during deduplication.
-  - `match.verified_against` — "search_engine_cache" | "platform_origin".
-    Records which URL was actually fetched and scored, since GCV/SerpApi
-    sometimes serve their own cached copy rather than the platform's.
+  - `match.verified_against` — "platform_origin" | "platform_api" |
+    "platform_embed" | "search_engine_cache" | "unknown". Computed here
+    from the HOST of the exact URL that was fetched
+    (`best.candidate.image_url`), not accepted as a caller-supplied
+    default — a default that nobody re-derives from the real URL is
+    exactly the kind of value R-24 exists to forbid (it looks like data
+    but isn't checked against anything). See `_classify_verified_against`.
+  - `match.match_kind` — mirrors `Candidate.match_kind` ("full" | "partial"
+    | "similar" | "page" | "unknown"), the provider's own claim about how
+    confident it is this is the SAME image. R-03: diagnostic only, never
+    part of the accept decision, which has already happened by the time
+    this bundle is built.
+  - `post.metadata_source` — "bluesky_appview" when post_meta came from
+    the Bluesky provider, else null. Other providers (GCV/SerpApi) supply
+    no post metadata today, so this is honestly null rather than guessed.
 
   Fixes a real defect found in every previously anchored run: this module
   used to read `post_meta.get("image_sha256", "")`, but no provider ever
@@ -43,6 +55,7 @@ import hashlib
 import io
 import time
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 import imagehash
 from PIL import Image
@@ -54,6 +67,42 @@ from pipeline.verify.allowlist import content_kind
 from pipeline.verify.matcher import MatchResult
 
 SCHEMA_VERSION = 2
+
+# match.verified_against — every value that can be emitted. Kept as a
+# frozenset so a future addition to _classify_verified_against is forced
+# to also update this set, and the "unknown" test below stays meaningful.
+VERIFIED_AGAINST_VALUES = frozenset(
+    {"platform_origin", "platform_api", "platform_embed", "search_engine_cache", "unknown"}
+)
+
+# Hosts through which Google serves ITS OWN cached copy of an image rather
+# than the platform's origin. Suffix-matched against the fetched URL's
+# hostname.
+_SEARCH_ENGINE_CACHE_HOST_SUFFIXES = (
+    "gstatic.com",       # encrypted-tbn*.gstatic.com and others
+    "googleusercontent.com",  # lh*.googleusercontent.com
+)
+
+
+def _classify_verified_against(image_url: str) -> str:
+    """Derives verified_against from the HOST of the exact URL that was
+    fetched and scored, rather than trusting a caller-supplied label. A
+    label nobody re-derives from the real URL is exactly the kind of
+    value R-24 exists to forbid — it reads as data but was never checked.
+
+    Only "search_engine_cache" vs "platform_origin" are distinguishable
+    from the URL alone. "platform_api" / "platform_embed" require the
+    CALLER to know how the bytes were obtained (e.g. an oEmbed thumbnail
+    vs a raw CDN fetch) — see the `verified_against` override parameter
+    on build_evidence(), which callers use for those two cases. This
+    function is the DEFAULT when no override is supplied.
+    """
+    host = (urlparse(image_url).hostname or "").lower()
+    if not host:
+        return "unknown"
+    if any(host == suf or host.endswith("." + suf) for suf in _SEARCH_ENGINE_CACHE_HOST_SUFFIXES):
+        return "search_engine_cache"
+    return "platform_origin"
 
 
 @dataclass(frozen=True)
@@ -84,7 +133,7 @@ def build_evidence(
     candidates_examined: int,
     pipeline_version: str,
     image_bytes: bytes | None,
-    verified_against: str = "search_engine_cache",
+    verified_against: str | None = None,
     captured_at: int | None = None,
 ) -> EvidenceBundle:
     """Builds and hashes an evidence bundle for an ACCEPTed match.
@@ -101,10 +150,14 @@ def build_evidence(
     hash field is meaningless (see the module docstring for the defect
     this replaced: every previously anchored run had image_sha256 == "").
 
-    verified_against: "search_engine_cache" (the default — most GCV/
-    SerpApi hits are the provider's own cached/served copy) or
-    "platform_origin" when the candidate's URL was confirmed to be the
-    platform's own CDN/origin rather than a provider-served proxy.
+    verified_against: optional override. When omitted (the normal case),
+    it is DERIVED from the host of best.candidate.image_url via
+    _classify_verified_against — never a hardcoded default, since an
+    unverified default is exactly the kind of value R-24 forbids. Pass an
+    explicit value only when the caller has out-of-band knowledge the URL
+    alone can't provide: "platform_api" (bytes came from an official
+    API/oEmbed thumbnail) or "platform_embed" (a public embed surface).
+    Must be one of bundle.VERIFIED_AGAINST_VALUES if supplied.
     """
     if match.verdict != "MATCH" or match.best is None:
         raise ValueError(
@@ -120,11 +173,23 @@ def build_evidence(
             "let alone anchored (see the module docstring)."
         )
 
+    if verified_against is not None and verified_against not in VERIFIED_AGAINST_VALUES:
+        raise ValueError(
+            f"verified_against={verified_against!r} is not one of {sorted(VERIFIED_AGAINST_VALUES)}"
+        )
+
     best = match.best
     runner_up_score = match.runner_up.score if match.runner_up else None
     margin = best.score - (runner_up_score if runner_up_score is not None else -1.0)
 
     post_meta = best.candidate.post_meta or {}
+
+    resolved_verified_against = verified_against or _classify_verified_against(best.candidate.image_url)
+
+    # Bluesky is the only provider that populates post_meta today (GCV and
+    # SerpApi supply none). Honestly null rather than guessed for anything
+    # else — see the module docstring's v2 changelog entry.
+    metadata_source = "bluesky_appview" if best.candidate.source == "bluesky" and post_meta else None
 
     data = {
         "schema_version": SCHEMA_VERSION,
@@ -140,7 +205,8 @@ def build_evidence(
             "image_url": best.candidate.image_url,
             "image_sha256": image_sha256(image_bytes),
             "image_phash": image_phash(image_bytes),
-            "verified_against": verified_against,
+            "verified_against": resolved_verified_against,
+            "match_kind": best.candidate.match_kind or "unknown",
             "provider": best.candidate.source,
             "score_bps": _score_bps(best.score),
             "margin_bps": _score_bps(margin),
@@ -154,6 +220,7 @@ def build_evidence(
             "text": post_meta.get("text", ""),
             "published_at": _to_unix_seconds(post_meta.get("published_at")),
             "permalink": post_meta.get("permalink", best.candidate.page_url),
+            "metadata_source": metadata_source,
         },
         "run": {
             "run_id": run_id,
@@ -200,6 +267,23 @@ def _to_unix_seconds(value) -> int:
 
 def image_sha256(image_bytes: bytes) -> str:
     return hashlib.sha256(image_bytes).hexdigest()
+
+
+def detect_image_extension(image_bytes: bytes) -> str:
+    """Sniffs the real format of image_bytes via PIL rather than trusting
+    a URL's extension (URLs frequently lie: a JPEG served from a path
+    ending in no extension at all, or a signed CDN URL with none). Used
+    when saving runs/<id>/match_image.<ext> so the run directory is
+    self-contained (T0.2). Falls back to ".jpg" if PIL cannot identify
+    the format — matches build_evidence's own tolerance, since a failure
+    here must never block writing the rest of the run.
+    """
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        fmt = (img.format or "JPEG").lower()
+        return {"jpeg": ".jpg", "png": ".png", "webp": ".webp", "gif": ".gif"}.get(fmt, f".{fmt}")
+    except Exception:
+        return ".jpg"
 
 
 def image_phash(image_bytes: bytes) -> str:

@@ -130,9 +130,17 @@ def parse_gcv(payload: dict[str, Any]) -> tuple[list[Candidate], list[str]]:
             ),
             None,
         )
-        match_kind = "full" if any(i.get("url") == image_url for i in full_images) else (
-            "partial" if image_url else ""
-        )
+        if image_url and any(i.get("url") == image_url for i in full_images):
+            match_kind = "full"
+        elif image_url:
+            match_kind = "partial"
+        else:
+            # A pagesWithMatchingImages entry with no image of its own —
+            # only a page-level signal (Google found this PAGE, not
+            # necessarily this exact image on it). Distinct from
+            # "unknown": "page" means we know exactly what kind of weak
+            # signal this is, not that nobody classified it.
+            match_kind = "page"
         # Never fall back to the page URL as an image URL — that downloads
         # HTML and misreports it as "no face detected". Derive a real
         # thumbnail where the platform allows it, otherwise leave it empty
@@ -228,6 +236,10 @@ def parse_serpapi_lens(payload: dict[str, Any]) -> tuple[list[Candidate], list[s
                 provider_score=None,  # R-03: Lens gives no score, and we would ignore it
                 raw={"title": m.get("title"), "kind": "visual_match", "image_field_used": image_field_used},
                 image_url_fallbacks=fallbacks,
+                # Lens's own name for this bucket is "visual match" —
+                # visually similar, not an assertion of pixel identity the
+                # way GCV's fullMatchingImages is. Maps to our "similar".
+                match_kind="similar",
             )
         )
 

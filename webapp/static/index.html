@@ -78,6 +78,13 @@
   /* Reason cells stay one line; the full sentence lives in the title
      tooltip (app.js shortenReason) so a row never becomes a billboard. */
   td.reason-cell { max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: help; }
+  /* match_kind (T1.2): diagnostic strength of the provider's own image-
+     identity claim. Never affects accept/reject styling (R-03) — this is
+     a separate, weaker visual signal, always dimmer than the accept/reject
+     row highlighting. */
+  td.mk-full { color: #58a6ff; font-weight: 600; }
+  td.mk-partial { color: #8b949e; }
+  td.mk-weak { color: #6e7681; }
   tr.accept { background: rgba(35, 134, 54, 0.12); }
   /* A real match above threshold, just not the top-ranked one. Must read as
      supporting evidence, never as a rejection. */
@@ -170,7 +177,7 @@
         <summary id="diagnosticsSummary">show diagnostics (rejected candidates)</summary>
         <table id="candidateTable" style="display:none;">
           <thead>
-            <tr><th>#</th><th>Score</th><th>Source</th><th>Post</th><th>Decision</th><th>Reason</th></tr>
+            <tr><th>#</th><th>Score</th><th>Source</th><th>Post</th><th>Decision</th><th>Reason</th><th title="Provider's own claim about image identity — diagnostic only, never used to accept/reject (R-03)">Match kind</th></tr>
           </thead>
           <tbody id="candidateBody"></tbody>
         </table>

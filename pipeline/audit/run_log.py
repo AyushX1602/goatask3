@@ -42,6 +42,9 @@ def build_audit(
                 "score": r.score,
                 "decision": r.decision,
                 "reason": r.reason,
+                # Diagnostic only (R-03): the provider's own claim about
+                # how confident it is this is the SAME image. T1.2.
+                "match_kind": r.candidate.match_kind,
             }
         )
 

@@ -15,6 +15,7 @@ matter of discipline.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -146,13 +147,23 @@ class EvmClient:
         # refuses outright if that invariant was somehow violated upstream
         # rather than anchoring a meaningless hash.
         image_hash_hex = bundle.data["match"].get("image_sha256")
-        if not image_hash_hex:
+        # A fullmatch on exactly 64 hex characters, not just a truthiness
+        # check. The old truthiness-only check would have let a MALFORMED
+        # hash (too short, too long, or containing non-hex characters)
+        # through into `.rjust(64, "0")[:64]`, which silently pads or
+        # truncates it into something that decodes as bytes but is not the
+        # real sha256 anyone computed — the exact same class of "looks like
+        # data but isn't" defect this whole fix exists to eliminate, just
+        # narrower than an empty string.
+        if not re.fullmatch(r"[0-9a-fA-F]{64}", image_hash_hex or ""):
             raise ValueError(
-                "cannot anchor: bundle.data['match']['image_sha256'] is empty. "
-                "This should be impossible — build_evidence() requires non-empty "
-                "image_bytes — so something upstream bypassed that contract."
+                f"cannot anchor: bundle.data['match']['image_sha256'] is missing or "
+                f"malformed (got {image_hash_hex!r}, need exactly 64 hex chars). "
+                "This should be impossible — build_evidence() requires a real "
+                "sha256 of non-empty image_bytes — so something upstream bypassed "
+                "that contract. Refusing rather than silently padding/truncating it."
             )
-        image_hash = bytes.fromhex(image_hash_hex.removeprefix("0x").rjust(64, "0")[:64])
+        image_hash = bytes.fromhex(image_hash_hex)
         post_hash = _keccak_of_canonical_post(bundle.data["post"])
         score_bps = int(bundle.data["match"]["score_bps"])
         cid = ""  # IPFS upload cut from MVP scope (D-29); empty string is a valid field

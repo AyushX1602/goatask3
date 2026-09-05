@@ -29,7 +29,7 @@ from pydantic import BaseModel
 from pipeline import __version__ as PIPELINE_VERSION
 from pipeline.audit.run_log import build_audit, new_run_id, write_audit
 from pipeline.config import RUNS_DIR, ensure_dirs, get_commitment_salt, get_config
-from pipeline.evidence.bundle import build_evidence
+from pipeline.evidence.bundle import build_evidence, detect_image_extension
 from pipeline.face.align import align
 from pipeline.face.detect import FaceDetector
 from pipeline.face.embed import FaceEmbedder
@@ -325,6 +325,12 @@ def search(run_id: str) -> SearchResponse:
         )
         (RUNS_DIR / run_id).mkdir(parents=True, exist_ok=True)
         (RUNS_DIR / run_id / "evidence.json").write_bytes(bundle.canonical_json)
+        # Saved so the run directory is self-contained (T0.2): a judge can
+        # open the exact image that produced image_sha256/image_phash
+        # without re-fetching a URL that may have since changed or 404'd.
+        if result.best_image_bytes:
+            ext = detect_image_extension(result.best_image_bytes)
+            (RUNS_DIR / run_id / f"match_image{ext}").write_bytes(result.best_image_bytes)
         evidence_hash_hex = bundle.evidence_hash_hex
 
     unverifiable_hits = [

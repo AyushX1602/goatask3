@@ -285,7 +285,7 @@ function renderResults(data) {
 
   candidateBody.innerHTML = "";
   if (data.candidates.length === 0) {
-    candidateBody.innerHTML = '<tr><td colspan="6" class="empty">No candidates returned.</td></tr>';
+    candidateBody.innerHTML = '<tr><td colspan="7" class="empty">No candidates returned.</td></tr>';
     return;
   }
 
@@ -326,6 +326,13 @@ function renderResults(data) {
     // reason (never dropped, R-24) — just not inline at full length.
     const shortReason = shortenReason(c.decision, c.reason);
 
+    // match_kind (T1.2): the provider's own claim about how confident it
+    // is this is the SAME image — diagnostic only, R-03, never part of
+    // the accept decision. "unknown" renders dim since it carries no
+    // information; "full"/"partial" are the strongest provider signals.
+    const mk = c.match_kind || "unknown";
+    const mkClass = mk === "full" ? "mk-full" : mk === "partial" ? "mk-partial" : "mk-weak";
+
     tr.innerHTML = `
       <td>${c.rank + 1}</td>
       <td>${scoreCell}</td>
@@ -333,6 +340,7 @@ function renderResults(data) {
       <td>${postCell}</td>
       <td>${c.decision}</td>
       <td class="reason-cell" style="color:#8b949e;" title="${escapeHtml(c.reason)}">${shortReason}</td>
+      <td class="${mkClass}">${mk}</td>
     `;
     candidateBody.appendChild(tr);
   }

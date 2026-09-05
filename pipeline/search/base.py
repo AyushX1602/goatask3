@@ -32,14 +32,20 @@ class Candidate:
     # GCV's own classification of how confident it is this is the SAME
     # image: "full" (fullMatchingImages — Google asserts pixel-identical),
     # "partial" (partialMatchingImages), "similar" (visuallySimilarImages —
-    # just a lookalike), or "" when the provider gives no such signal
-    # (SerpApi, Bluesky). R-03 still applies in full: this is NEVER used to
-    # accept or reject a candidate. It exists purely for reporting —
-    # specifically to distinguish "the search engine asserts this exact
-    # image appears on a platform we cannot fetch from" (recorded, not
-    # accepted — a real signal about cross-platform image reuse worth
-    # showing) from "just another lookalike, ignore it".
-    match_kind: str = ""
+    # just a lookalike), "page" (a pagesWithMatchingImages entry that
+    # carried no image of its own — only a page-level signal, no image
+    # confidence claim at all), or "unknown" when the provider gives no
+    # such signal (SerpApi organic results, Bluesky, or any candidate
+    # nobody classified). Defaults to "unknown" rather than "" — an empty
+    # string in a field that reads as an enum is exactly the kind of value
+    # R-24 forbids: it looks like data but was never actually classified.
+    # R-03 still applies in full: this is NEVER used to accept or reject a
+    # candidate. It exists purely for reporting — specifically to
+    # distinguish "the search engine asserts this exact image appears on a
+    # platform we cannot fetch from" (recorded, not accepted — a real
+    # signal about cross-platform image reuse worth showing) from "just
+    # another lookalike, ignore it".
+    match_kind: str = "unknown"
 
 
 @dataclass(frozen=True)
