@@ -187,6 +187,42 @@ function shortenReason(decision, reason) {
   return reason || decision;
 }
 
+// Replaces a bare "—" (no cosine score to show, because no face was ever
+// embedded) with the REAL measured observation instead — 6 Sep 2026, owner
+// instruction: "numbers ... instead of --". There is no confidence value
+// to fabricate for a row where the image never decoded or had no face; a
+// fabricated number here would be worse than a dash, since it would look
+// like evidence. This shows only what was actually observed: HTTP status,
+// content-type, byte count, image dimensions, faces detected, or how many
+// recovery routes were tried before giving up.
+function diagnosticObservation(diag) {
+  if (!diag) return "<span style=\"color:#6e7681;\">—</span>";
+  const parts = [];
+  if (diag.http_status !== null && diag.http_status !== undefined) {
+    parts.push(`HTTP ${diag.http_status}`);
+  }
+  if (diag.faces_found) {
+    parts.push(`${diag.faces_found} face(s)`);
+    if (diag.largest_face_px !== null && diag.largest_face_px !== undefined) {
+      parts.push(`${Math.round(diag.largest_face_px)}px`);
+    }
+  } else if (diag.image_width && diag.image_height) {
+    parts.push(`0 faces · ${diag.image_width}×${diag.image_height}`);
+  } else if (diag.content_type) {
+    const shortType = diag.content_type.split(";")[0];
+    parts.push(shortType);
+  }
+  if (diag.content_bytes !== null && diag.content_bytes !== undefined) {
+    parts.push(diag.content_bytes >= 1024 ? `${Math.round(diag.content_bytes / 1024)} KB` : `${diag.content_bytes} B`);
+  }
+  if (diag.routes_tried && diag.routes_tried > 1) {
+    parts.push(`${diag.routes_tried} routes tried`);
+  }
+  return parts.length
+    ? `<span style="color:#6e7681; font-size:12px;">${parts.join(" · ")}</span>`
+    : "<span style=\"color:#6e7681;\">—</span>";
+}
+
 function escapeHtml(s) {
   const div = document.createElement("div");
   div.textContent = s || "";
@@ -276,6 +312,18 @@ function renderResults(data) {
     }
   }
 
+  // Chain panel (G4) only makes sense for a MATCH with an evidence bundle
+  // — evidence/bundle.py refuses to build one for anything else (R-16).
+  if (isMatch && data.evidence_hash) {
+    chainPanel.style.display = "block";
+    chainStatus.textContent = "";
+    chainResult.textContent = "";
+    verifyBtn.disabled = true;
+    tamperBtn.disabled = true;
+  } else {
+    chainPanel.style.display = "none";
+  }
+
   diagnostics.style.display = "block";
   diagnosticsSummary.textContent = isMatch
     ? `show diagnostics (${data.candidates.length} candidate(s) examined` +
@@ -312,7 +360,7 @@ function renderResults(data) {
     const scorePct = c.score !== null ? Math.max(0, Math.min(100, c.score * 100)) : 0;
     const scoreCell = c.score !== null
       ? `<span class="score-bar"><span class="score-fill ${c.decision === "ACCEPT" || c.decision === "corroborating" ? "accept" : ""}" style="width:${scorePct}%"></span></span>${c.score.toFixed(4)}`
-      : "—";
+      : diagnosticObservation(c.diagnostics);
 
     const postCell = c.page_url
       ? `<a href="${c.page_url}" target="_blank" rel="noopener">${c.page_url.replace("https://", "")}</a>`
@@ -343,6 +391,76 @@ function renderResults(data) {
       <td class="${mkClass}">${mk}</td>
     `;
     candidateBody.appendChild(tr);
+  }
+}
+
+// ---------------- chain: anchor / verify / tamper (G4, 6 Sep 2026) --------
+
+const chainPanel = document.getElementById("chainPanel");
+const anchorBtn = document.getElementById("anchorBtn");
+const verifyBtn = document.getElementById("verifyBtn");
+const tamperBtn = document.getElementById("tamperBtn");
+const chainStatus = document.getElementById("chainStatus");
+const chainResult = document.getElementById("chainResult");
+
+anchorBtn.addEventListener("click", async () => {
+  if (!currentRunId) return;
+  anchorBtn.disabled = true;
+  chainStatus.textContent = "Anchoring on chain...";
+  chainResult.textContent = "";
+  try {
+    const resp = await fetch(`/api/anchor/${currentRunId}`, { method: "POST" });
+    const data = await resp.json();
+    if (data.ok) {
+      chainStatus.textContent = "Anchored.";
+      chainResult.textContent =
+        `tx:       ${data.tx_hash}\n` +
+        `chain_id: ${data.chain_id}\n` +
+        `block:    ${data.block_number}\n` +
+        `contract: ${data.contract_address}\n` +
+        `evidence: ${data.evidence_hash}`;
+      verifyBtn.disabled = false;
+      tamperBtn.disabled = false;
+    } else {
+      chainStatus.textContent = "Anchor failed.";
+      chainResult.textContent = data.error || "unknown error";
+    }
+  } catch (err) {
+    chainStatus.textContent = "Anchor failed: " + err.message;
+  } finally {
+    anchorBtn.disabled = false;
+  }
+});
+
+verifyBtn.addEventListener("click", async () => {
+  if (!currentRunId) return;
+  await runVerify(`/api/verify/${currentRunId}`, "Verifying against the on-chain record...");
+});
+
+tamperBtn.addEventListener("click", async () => {
+  if (!currentRunId) return;
+  // /api/tamper/{run_id} mutates a SCRATCH COPY only — the real
+  // evidence.json on disk is never touched (verified in
+  // tests/test_anchor_verify_endpoints.py). Safe to click repeatedly.
+  await runVerify(`/api/tamper/${currentRunId}`, "Tampering a scratch copy and re-verifying...", true);
+});
+
+async function runVerify(endpoint, statusText, isTamper = false) {
+  chainStatus.textContent = statusText;
+  chainResult.textContent = "";
+  try {
+    const resp = await fetch(endpoint, { method: "POST" });
+    const data = await resp.json();
+    const badge = data.overall === "PASS" ? "PASS" : data.overall;
+    chainStatus.innerHTML = `<span class="badge ${data.overall === "PASS" ? "match" : "no-match"}">${badge}</span>`;
+    const lines = [`detail: ${data.detail}`, `recomputed: ${data.recomputed_hash}`];
+    if (isTamper) {
+      lines.unshift(`tampered ${data.tampered_field}: ${data.original_value} -> ${data.tampered_value}`);
+    }
+    if (data.anchored_hash) lines.push(`anchored:   ${data.anchored_hash}`);
+    chainResult.textContent = lines.join("\n");
+  } catch (err) {
+    chainStatus.textContent = "Failed: " + err.message;
   }
 }
 

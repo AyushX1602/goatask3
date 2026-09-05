@@ -22,6 +22,7 @@ def build_audit(
     provider_reports: list[ProviderReport],
     match: MatchResult,
     cache_stats: dict[str, dict[str, int]] | None = None,
+    candidate_diagnostics: dict | None = None,
 ) -> dict:
     """cache_stats: optional per-provider {"hits": N, "misses": N}. Exists
     because pipeline.cache.http_cache.get_http_cache()'s own docstring
@@ -29,9 +30,18 @@ def build_audit(
     existed, that claim was false; build_audit() never referenced them.
     Recording-day discipline (G1.6) depends on this being real: a replayed
     (all-cache-hit) run must be visibly distinguishable from a live one.
+
+    candidate_diagnostics: optional {image_url: FetchDiagnostics}, from
+    PipelineResult.candidate_diagnostics (verify/pipeline_run.py). Real,
+    measured fetch/decode observations — 6 Sep 2026, owner instruction:
+    replace a bare `—` for structurally-unscoreable rows with actual
+    numbers rather than leaving a gap or fabricating a confidence value.
     """
+    diag_by_url = candidate_diagnostics or {}
+
     candidates = []
     for rank, r in enumerate(match.all_scored):
+        diag = diag_by_url.get(r.candidate.image_url)
         candidates.append(
             {
                 "rank": rank,
@@ -45,6 +55,23 @@ def build_audit(
                 # Diagnostic only (R-03): the provider's own claim about
                 # how confident it is this is the SAME image. T1.2.
                 "match_kind": r.candidate.match_kind,
+                # Real, measured observations — never present unless we
+                # actually fetched something. None (not a fabricated 0 or
+                # "n/a" string) when no fetch was ever attempted.
+                "diagnostics": (
+                    {
+                        "http_status": diag.http_status,
+                        "content_type": diag.content_type,
+                        "content_bytes": diag.content_bytes,
+                        "image_width": diag.image_width,
+                        "image_height": diag.image_height,
+                        "faces_found": diag.faces_found,
+                        "largest_face_px": diag.largest_face_px,
+                        "routes_tried": diag.routes_tried,
+                    }
+                    if diag is not None
+                    else None
+                ),
             }
         )
 

@@ -512,3 +512,45 @@ def test_detect_image_extension_falls_back_to_jpg_on_undecodable_bytes():
     from pipeline.evidence.bundle import detect_image_extension
 
     assert detect_image_extension(b"not an image") == ".jpg"
+
+
+# --- Real diagnostics instead of a bare dash (6 Sep 2026) ---
+
+
+def test_build_audit_includes_real_diagnostics_for_a_candidate():
+    from pipeline.audit.run_log import build_audit
+    from pipeline.search.base import Candidate as _Cand
+    from pipeline.verify.matcher import MatchResult as MR, ScoredCandidate as SC
+    from pipeline.verify.pipeline_run import FetchDiagnostics
+
+    cand = _Cand(image_url="https://example.test/photo.jpg", page_url="https://x.test/1", source="fake")
+    row = SC(cand, None, 0, "reject-no-face", "no face detected in candidate image")
+    match = MR(best=None, runner_up=None, all_scored=[row], threshold=0.42, margin_required=0.08, verdict="NO_MATCH")
+
+    diag = FetchDiagnostics(http_status=200, content_type="image/jpeg", content_bytes=45000, image_width=640, image_height=480, faces_found=0)
+
+    audit = build_audit(
+        run_id="x", started_at=0.0, liveness={}, provider_reports=[], match=match,
+        candidate_diagnostics={cand.image_url: diag},
+    )
+
+    d = audit["candidates"][0]["diagnostics"]
+    assert d["http_status"] == 200
+    assert d["content_type"] == "image/jpeg"
+    assert d["content_bytes"] == 45000
+    assert d["image_width"] == 640
+    assert d["faces_found"] == 0
+
+
+def test_build_audit_diagnostics_is_none_when_never_fetched():
+    from pipeline.audit.run_log import build_audit
+    from pipeline.search.base import Candidate as _Cand
+    from pipeline.verify.matcher import MatchResult as MR, ScoredCandidate as SC
+
+    cand = _Cand(image_url="", page_url="https://x.test/1", source="fake")
+    row = SC(cand, None, 0, "reject-no-image", "no url")
+    match = MR(best=None, runner_up=None, all_scored=[row], threshold=0.42, margin_required=0.08, verdict="NO_MATCH")
+
+    audit = build_audit(run_id="x", started_at=0.0, liveness={}, provider_reports=[], match=match)
+
+    assert audit["candidates"][0]["diagnostics"] is None

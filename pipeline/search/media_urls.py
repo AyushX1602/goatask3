@@ -229,6 +229,34 @@ def derive_image_url_and_fallbacks(page_url: str) -> tuple[str, tuple[str, ...]]
     return "", ()
 
 
+_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp")
+
+
+def is_citable_page(page_url: str, image_url: str) -> bool:
+    """True if page_url is an openable PAGE a human can visit and see the
+    post/profile on, rather than a bare image file. Used by
+    verify/matcher.py's citability-aware headline selection (6 Sep 2026):
+    within a cluster of candidates that all agree on the same identity
+    (D-35), prefer citing a real page over a bare CDN media URL, even when
+    the bare CDN hit scored higher — a judge clicking the citation should
+    land on a post, not a raw JPEG.
+
+    Heuristic, not a full URL classifier: a page_url that is identical to
+    the image_url, or that itself looks like a direct image file (ends in
+    a known image extension), is NOT citable. This catches the concrete
+    case that motivated it: X media URLs
+    (pbs.twimg.com/media/....jpg?name=thumb) where GCV sets page_url to
+    the same bare-image URL because no parent post is derivable
+    (derive_page_url returns None for exactly this reason, see above).
+    """
+    if not page_url:
+        return False
+    if page_url == image_url:
+        return False
+    path = page_url.split("?", 1)[0].lower()
+    return not path.endswith(_IMAGE_EXTENSIONS)
+
+
 def size_variants_for(image_url: str) -> tuple[str, ...]:
     """Ordered, largest-first alternates for an already-known image URL,
     for platforms where the SAME candidate is available at several

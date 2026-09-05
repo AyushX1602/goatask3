@@ -26,6 +26,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import json
+
 from pipeline import __version__ as PIPELINE_VERSION
 from pipeline.audit.run_log import build_audit, new_run_id, write_audit
 from pipeline.config import RUNS_DIR, ensure_dirs, get_commitment_salt, get_config
@@ -36,6 +38,8 @@ from pipeline.face.embed import FaceEmbedder
 from pipeline.face.liveness import LivenessChecker
 from pipeline.face.quality import passes as quality_passes, probe_error_message
 from pipeline.cache.http_cache import get_http_cache
+from pipeline.chain.evm import ContractNotDeployedError, EvmClient
+from pipeline.chain.reverify import reverify_bundle
 from pipeline.search.bluesky import BlueskyProvider
 from pipeline.search.image_prep import prepare_search_image
 from pipeline.search.web_detect import WebDetectProvider
@@ -275,6 +279,7 @@ def search(run_id: str) -> SearchResponse:
             images_fetched=fallback_result.images_fetched,
             images_deduped=fallback_result.images_deduped,
             best_image_bytes=fallback_result.best_image_bytes,
+            candidate_diagnostics=fallback_result.candidate_diagnostics,
         )
         providers_queried = primary_providers_queried + [_bluesky.name]
         degraded = True
@@ -290,6 +295,7 @@ def search(run_id: str) -> SearchResponse:
         provider_reports=result.provider_reports,
         match=result.match,
         cache_stats=cache_stats,
+        candidate_diagnostics=result.candidate_diagnostics,
     )
     audit["identity_signals"] = result.identity_signals  # context only, R-03
     audit["degraded_closed_corpus"] = degraded
@@ -352,4 +358,182 @@ def search(run_id: str) -> SearchResponse:
         degraded_closed_corpus=degraded,
         evidence_hash=evidence_hash_hex,
         unverifiable_platform_hits=unverifiable_hits,
+    )
+
+
+# --------------------------------------------------------------------------
+# G4 (6 Sep 2026): anchor/verify/tamper endpoints. Same pipeline.chain.*
+# functions the CLI uses (pipeline/cli.py's anchor/verify commands) — no
+# second implementation, per architecture.md 5a. Exists so the anchor ->
+# verify -> tamper -> restore cycle can be demonstrated by clicking buttons
+# in the recording instead of switching to a terminal and hand-editing
+# JSON, which is both slower and easier to fumble on a single take.
+# --------------------------------------------------------------------------
+
+
+class AnchorResponse(BaseModel):
+    ok: bool
+    tx_hash: str | None = None
+    chain_id: int | None = None
+    block_number: int | None = None
+    contract_address: str | None = None
+    evidence_hash: str | None = None
+    error: str | None = None
+
+
+class VerifyResponse(BaseModel):
+    overall: str  # "PASS" | "TAMPERED" | "NOT_ANCHORED" | "ERROR"
+    detail: str
+    recomputed_hash: str
+    anchored_hash: str | None = None
+    on_chain_exists: bool | None = None
+
+
+class TamperResponse(BaseModel):
+    """Result of tampering a SCRATCH COPY of the bundle, never the real
+    one. See /api/tamper/{run_id} below."""
+    overall: str
+    detail: str
+    tampered_field: str
+    original_value: str
+    tampered_value: str
+
+
+def _load_evidence_bundle(run_id: str):
+    from pipeline.evidence.bundle import EvidenceBundle
+    from pipeline.evidence.canonical import evidence_hash_hex
+
+    bundle_path = RUNS_DIR / run_id / "evidence.json"
+    if not bundle_path.exists():
+        return None
+    raw = bundle_path.read_bytes()
+    data = json.loads(raw)
+    return EvidenceBundle(data=data, evidence_hash_hex=evidence_hash_hex(data), canonical_json=raw)
+
+
+@app.post("/api/anchor/{run_id}", response_model=AnchorResponse)
+def anchor_run(run_id: str) -> AnchorResponse:
+    """Anchors runs/<run_id>/evidence.json on the configured EVM chain.
+    Identical logic to `python -m pipeline anchor <run_id>` (cli.py) —
+    same EvmClient, same anchor.json written afterward."""
+    bundle = _load_evidence_bundle(run_id)
+    if bundle is None:
+        return AnchorResponse(ok=False, error=f"no evidence bundle for run {run_id} (was the verdict MATCH?)")
+
+    try:
+        client = EvmClient()
+        receipt = client.anchor(bundle)
+    except ContractNotDeployedError as e:
+        return AnchorResponse(ok=False, error=str(e))
+    except Exception as e:
+        return AnchorResponse(ok=False, error=f"{type(e).__name__}: {e}")
+
+    anchor_record = {
+        "tx_hash": receipt.tx_hash,
+        "chain_id": receipt.chain_id,
+        "block_number": receipt.block_number,
+        "contract_address": receipt.contract_address,
+        "gas_used": receipt.gas_used,
+        "evidence_hash": receipt.evidence_hash_hex,
+    }
+    (RUNS_DIR / run_id / "anchor.json").write_text(json.dumps(anchor_record, indent=2), encoding="utf-8")
+
+    return AnchorResponse(
+        ok=True,
+        tx_hash=receipt.tx_hash,
+        chain_id=receipt.chain_id,
+        block_number=receipt.block_number,
+        contract_address=receipt.contract_address,
+        evidence_hash=receipt.evidence_hash_hex,
+    )
+
+
+@app.post("/api/verify/{run_id}", response_model=VerifyResponse)
+def verify_run(run_id: str) -> VerifyResponse:
+    """Re-verifies runs/<run_id>/evidence.json against the on-chain
+    record. Identical logic to `python -m pipeline verify <run_id>`
+    (cli.py) — the literal brief requirement 3, "demonstrate re-verifying
+    the data against the on-chain record."""
+    run_dir = RUNS_DIR / run_id
+    bundle_path = run_dir / "evidence.json"
+    anchor_path = run_dir / "anchor.json"
+
+    if not bundle_path.exists():
+        return VerifyResponse(overall="ERROR", detail=f"no evidence bundle at {bundle_path}", recomputed_hash="")
+
+    expected_hash = None
+    if anchor_path.exists():
+        expected_hash = json.loads(anchor_path.read_text(encoding="utf-8"))["evidence_hash"]
+
+    try:
+        report = reverify_bundle(bundle_path, client=EvmClient(), expected_hash=expected_hash)
+    except Exception as e:
+        return VerifyResponse(overall="ERROR", detail=f"{type(e).__name__}: {e}", recomputed_hash="")
+
+    return VerifyResponse(
+        overall=report.overall,
+        detail=report.detail,
+        recomputed_hash=report.recomputed_hash,
+        anchored_hash=report.anchored_hash,
+        on_chain_exists=report.on_chain.exists if report.on_chain else None,
+    )
+
+
+@app.post("/api/tamper/{run_id}", response_model=TamperResponse)
+def tamper_run(run_id: str) -> TamperResponse:
+    """Demonstrates the tamper-detection property WITHOUT mutating the
+    real evidence.json: builds an in-memory scratch copy of the bundle
+    with one field changed (match.score_bps incremented by 1), runs it
+    through the SAME reverify_bundle() the real /api/verify/{run_id} and
+    `python -m pipeline verify` use, and reports the result. The file on
+    disk is never touched — a click-to-demonstrate button beats hand-
+    editing JSON on a single-take recording, but it must not risk leaving
+    the real run corrupted if something goes wrong mid-demo.
+    """
+    import tempfile
+
+    run_dir = RUNS_DIR / run_id
+    bundle_path = run_dir / "evidence.json"
+    anchor_path = run_dir / "anchor.json"
+
+    if not bundle_path.exists():
+        return TamperResponse(
+            overall="ERROR", detail=f"no evidence bundle at {bundle_path}",
+            tampered_field="", original_value="", tampered_value="",
+        )
+
+    data = json.loads(bundle_path.read_text(encoding="utf-8"))
+    original_score = data["match"]["score_bps"]
+    tampered_score = original_score + 1
+    data["match"]["score_bps"] = tampered_score
+
+    from pipeline.evidence.canonical import canonical_bytes
+
+    tampered_canonical = canonical_bytes(data)
+
+    expected_hash = None
+    if anchor_path.exists():
+        expected_hash = json.loads(anchor_path.read_text(encoding="utf-8"))["evidence_hash"]
+
+    with tempfile.NamedTemporaryFile(mode="wb", suffix=".json", delete=False) as tmp:
+        tmp.write(tampered_canonical)
+        tmp_path = Path(tmp.name)
+
+    try:
+        report = reverify_bundle(tmp_path, client=EvmClient(), expected_hash=expected_hash)
+    except Exception as e:
+        return TamperResponse(
+            overall="ERROR", detail=f"{type(e).__name__}: {e}",
+            tampered_field="match.score_bps",
+            original_value=str(original_score), tampered_value=str(tampered_score),
+        )
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    return TamperResponse(
+        overall=report.overall,
+        detail=report.detail,
+        tampered_field="match.score_bps",
+        original_value=str(original_score),
+        tampered_value=str(tampered_score),
     )

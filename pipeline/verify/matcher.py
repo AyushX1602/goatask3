@@ -11,6 +11,8 @@ from urllib.parse import urlparse
 
 from pipeline.config import MatchPolicy
 from pipeline.search.base import Candidate
+from pipeline.search.media_urls import is_citable_page
+from pipeline.verify.allowlist import CONTENT_KIND_POST, CONTENT_KIND_PROFILE, content_kind
 
 
 @dataclass(frozen=True)
@@ -177,12 +179,39 @@ def score_candidates(
     passes_margin = margin >= policy.margin
     corroborating = max(0, len(above) - 1)
 
+    # Citability-aware headline selection (6 Sep 2026): threshold/margin
+    # gating above is measured against the HIGHEST-SCORING candidate
+    # (`best`, by raw score) — that is still the right test for "is this
+    # accept decision well separated from the non-match population", and
+    # nothing here changes that (R-03/D-35 stay intact: score never
+    # re-enters the decision below this point). Once the run legitimately
+    # passes, WHICH above-threshold candidate gets cited as the headline
+    # is a pure presentation choice over candidates that already agreed —
+    # every member of `above` is equally accepted; only one is displayed
+    # as the ACCEPT row. Prefer an openable page over a bare CDN image
+    # URL (X media hits: pbs.twimg.com/....jpg has no derivable parent
+    # post — is_citable_page returns False for exactly that), and prefer
+    # a "post" over a "profile" over "unknown" content kind. Found live:
+    # an X media hit scored 0.9806 while the citable YouTube hit in the
+    # same cluster scored 0.9618 — citing the X URL would open a raw JPEG,
+    # not a post.
+    headline = best
+    if passes_threshold and passes_margin and len(above) > 1:
+        content_kind_rank = {CONTENT_KIND_POST: 0, CONTENT_KIND_PROFILE: 1}
+
+        def _headline_sort_key(r: ScoredCandidate) -> tuple[int, int, float]:
+            citable = is_citable_page(r.candidate.page_url, r.candidate.image_url)
+            kind = content_kind(r.candidate.page_url, r.candidate.image_url)
+            return (0 if citable else 1, content_kind_rank.get(kind, 2), -r.score)
+
+        headline = min(above, key=_headline_sort_key)
+
     verdict = "NO_MATCH"
     for i, r in enumerate(results):
         if r.decision != "pending":
             continue
 
-        if r is best and passes_threshold and passes_margin:
+        if r is headline and passes_threshold and passes_margin:
             extra = (
                 f", {corroborating} corroborating match(es) above threshold"
                 if corroborating
@@ -204,10 +233,12 @@ def score_candidates(
                 r.candidate, r.score, r.faces_found, "reject-below-threshold",
                 f"score {r.score:.4f} < threshold {policy.threshold}",
             )
-        elif r is not best:
-            # Above threshold but not the top-ranked result. This is a real
-            # match too; we report a single best one and record the rest as
-            # supporting evidence, never as a rejection.
+        elif r is not headline:
+            # Above threshold but not the headline result (highest RAW
+            # score, unless citability preferred a different member of the
+            # same identity cluster — see headline selection above). This
+            # is a real match too; we report a single headline and record
+            # the rest as supporting evidence, never as a rejection.
             results[i] = ScoredCandidate(
                 r.candidate, r.score, r.faces_found, "corroborating",
                 f"score {r.score:.4f} >= threshold {policy.threshold}; "

@@ -188,6 +188,21 @@
           well below the 0.42 threshold, but the pilot figure alone understated it.
         </div>
       </details>
+
+      <!-- G4 (6 Sep 2026): anchor/verify/tamper. Same pipeline.chain.*
+           functions as `python -m pipeline anchor/verify` — clicking
+           beats switching to a terminal and hand-editing JSON on a
+           single-take recording. -->
+      <div id="chainPanel" style="display:none; margin-top:20px; padding-top:16px; border-top:1px solid #30363d;">
+        <h2>3. Blockchain — anchor & re-verify</h2>
+        <div style="display:flex; gap:8px;">
+          <button id="anchorBtn" style="margin-top:0;">Anchor on chain</button>
+          <button id="verifyBtn" class="secondary" style="margin-top:0;" disabled>Verify</button>
+          <button id="tamperBtn" style="margin-top:0; background:#da3633;" disabled>Tamper &amp; re-verify</button>
+        </div>
+        <div id="chainStatus" style="font-size:13px; color:#8b949e; margin-top:10px;"></div>
+        <div id="chainResult" style="margin-top:10px; font-family: ui-monospace, monospace; font-size:12px; white-space:pre-wrap; color:#8b949e;"></div>
+      </div>
     </div>
   </div>
 

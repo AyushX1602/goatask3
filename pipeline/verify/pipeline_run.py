@@ -15,12 +15,12 @@ exactly one verification implementation in the codebase (architecture.md
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 import cv2
 import numpy as np
 
-from pipeline.cache.http_cache import HttpCache, get_http_cache
+from pipeline.cache.http_cache import BROWSER_USER_AGENT, HttpCache, get_http_cache
 from pipeline.config import MatchPolicy, get_config, load_match_policy
 from pipeline.face.align import align
 from pipeline.face.detect import FaceDetector
@@ -31,6 +31,7 @@ from pipeline.search.orchestrator import gather
 from pipeline.verify.allowlist import SOCIAL_ALLOW, is_media_blocked, platform_name
 from pipeline.verify.dedupe import dedupe
 from pipeline.verify.matcher import MatchResult, score_candidates
+from pipeline.verify.resolver import resolve_page_to_image_url
 
 
 @dataclass(frozen=True)
@@ -50,18 +51,62 @@ class PipelineResult:
     # winning bytes used to be discarded once scoring finished and never
     # threaded any further than this function.
     best_image_bytes: bytes | None = None
+    # Real, measured fetch/decode observations for every candidate that
+    # was fetched, keyed by the RESOLVED image_url (matches
+    # ScoredCandidate.candidate.image_url after the rewrite in this
+    # function). Consumed by audit/run_log.py to replace a bare `—` in the
+    # diagnostics table with actual numbers for structurally-unscoreable
+    # rows (6 Sep 2026, owner instruction). Never fabricated: a candidate
+    # never fetched at all (e.g. reject-no-image, where no URL existed to
+    # try) simply has no entry here.
+    candidate_diagnostics: dict[str, FetchDiagnostics] = field(default_factory=dict)
 
 
-def _fetch_image(http: HttpCache, url: str, timeout: float = 12.0) -> bytes | None:
+@dataclass(frozen=True)
+class FetchDiagnostics:
+    """Real, measured observations about one fetch attempt — never a
+    fabricated confidence value. Exists specifically to replace a bare `—`
+    in the diagnostics table with something a viewer can actually check
+    (6 Sep 2026, owner instruction: "numbers ... instead of --"). There is
+    no cosine similarity to show for a row where no face was ever
+    embedded, and putting one there would be worse than a dash — it would
+    look like evidence and be fabricated. This is the honest alternative:
+    what we actually observed, in numbers.
+    """
+    http_status: int | None = None
+    content_type: str | None = None
+    content_bytes: int | None = None
+    image_width: int | None = None
+    image_height: int | None = None
+    faces_found: int = 0
+    largest_face_px: float | None = None
+    routes_tried: int = 1  # size variants + resolver attempts, see attempted
+
+
+def _fetch_image(http: HttpCache, url: str, timeout: float = 12.0) -> tuple[bytes | None, FetchDiagnostics]:
     if not url:
-        return None
+        return None, FetchDiagnostics()
     try:
-        resp = http.get(url, timeout=timeout)
+        # Browser UA for candidate image fetches (not our own API calls) —
+        # see http_cache.BROWSER_USER_AGENT's docstring. Measured to matter:
+        # generic sites (news CDNs, university pages) block a self-
+        # describing bot UA with no reason to block a browser.
+        resp = http.get(url, timeout=timeout, headers={"User-Agent": BROWSER_USER_AGENT})
+        diag = FetchDiagnostics(
+            http_status=getattr(resp, "status_code", None),
+            content_type=getattr(resp, "content_type", None),
+            content_bytes=len(resp.content) if getattr(resp, "content", None) else 0,
+        )
         if not resp.ok:
-            return None
-        return resp.content
+            return None, diag
+        return resp.content, diag
     except Exception:
-        return None
+        return None, FetchDiagnostics()
+
+
+def _face_size_px(face) -> float:
+    x1, y1, x2, y2 = face.bbox
+    return float(min(x2 - x1, y2 - y1))
 
 
 def _score_one_candidate(
@@ -70,12 +115,18 @@ def _score_one_candidate(
     probe_vec: np.ndarray,
     image_bytes: bytes,
     min_face_px: int,
-) -> tuple[float | None, int, str | None]:
-    """Returns (best_score_or_None, faces_found, prereject_reason_or_None).
+) -> tuple[float | None, int, str | None, float | None]:
+    """Returns (best_score_or_None, faces_found, prereject_reason_or_None,
+    largest_face_px_or_None).
 
     A prereject_reason means this candidate must not enter matcher's
     threshold/margin logic (design.md 1.7: too-small faces produce
     unreliable scores, not weak ones).
+
+    largest_face_px is a REAL measured observation (6 Sep 2026, owner
+    instruction: numbers instead of a bare dash) — it is reported even
+    when the face is too small to score, which is exactly the case where
+    a viewer most wants to know how close it came.
 
     image_bytes must already be known to decode as an image — callers are
     responsible for distinguishing "not an image" from "no face in the
@@ -86,22 +137,24 @@ def _score_one_candidate(
     arr = np.frombuffer(image_bytes, dtype=np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if img is None:
-        return None, 0, None  # not a prereject — goes through as reject-no-face
+        return None, 0, None, None  # not a prereject — goes through as reject-no-face
 
     faces = detector.detect(img)
     if not faces:
-        return None, 0, None
+        return None, 0, None, None
+
+    largest_px = max(_face_size_px(f) for f in faces)
 
     usable = [f for f in faces if quality_passes(f, min_face_px)[0]]
     if not usable:
-        return None, len(faces), "reject-face-too-small"
+        return None, len(faces), "reject-face-too-small", largest_px
 
     best = -1.0
     for f in usable:
         crop = align(img, f.kps5)
         emb = embedder.embed(crop)
         best = max(best, float(np.dot(emb.vec, probe_vec)))
-    return best, len(usable), None
+    return best, len(usable), None, largest_px
 
 
 @dataclass(frozen=True)
@@ -117,6 +170,9 @@ class _VariantOutcome:
     # where a failure message named ?name=thumb even though the size-
     # variant fix had already tried orig/large/medium/small first.
     attempted: tuple[str, ...] = ()
+    # Real, measured fetch observations for THIS specific url — never a
+    # placeholder. See FetchDiagnostics for why this exists.
+    diagnostics: FetchDiagnostics = field(default_factory=FetchDiagnostics)
 
 
 def _classify_fetch(http: HttpCache, url: str) -> _VariantOutcome:
@@ -124,11 +180,11 @@ def _classify_fetch(http: HttpCache, url: str) -> _VariantOutcome:
     response carrying an HTML stub (Instagram/Facebook lookaside URLs,
     verified live 5 Sep 2026) is never conflated with "no face detected".
     """
-    data = _fetch_image(http, url)
+    data, diag = _fetch_image(http, url)
     if data is None:
         if is_media_blocked(url):
-            return _VariantOutcome("blocked", url)
-        return _VariantOutcome("fetch-failed", url)
+            return _VariantOutcome("blocked", url, diagnostics=diag)
+        return _VariantOutcome("fetch-failed", url, diagnostics=diag)
 
     arr = np.frombuffer(data, dtype=np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
@@ -138,10 +194,11 @@ def _classify_fetch(http: HttpCache, url: str) -> _VariantOutcome:
         # status. This is a distinct, honest reject reason from
         # reject-no-face, which means "we saw a photo, no face in it".
         if is_media_blocked(url):
-            return _VariantOutcome("blocked", url)
-        return _VariantOutcome("not-image", url, image_bytes=data)
+            return _VariantOutcome("blocked", url, image_bytes=data, diagnostics=diag)
+        return _VariantOutcome("not-image", url, image_bytes=data, diagnostics=diag)
 
-    return _VariantOutcome("ok", url, image_bytes=data, decoded=img)
+    diag = replace(diag, image_width=img.shape[1], image_height=img.shape[0])
+    return _VariantOutcome("ok", url, image_bytes=data, decoded=img, diagnostics=diag)
 
 
 def _resolve_candidate_image(http: HttpCache, cand: Candidate) -> _VariantOutcome | None:
@@ -163,26 +220,63 @@ def _resolve_candidate_image(http: HttpCache, cand: Candidate) -> _VariantOutcom
     network on a cached run even though it may issue up to len(urls)
     requests on a cold one.
 
-    Returns None if there were no URLs to try at all.
+    If EVERY known image URL fails (or there was none to begin with), and
+    cand.page_url is set, falls through to the resolver cascade
+    (verify/resolver.py: OpenGraph, keyless oEmbed, Reddit .json) as a
+    last resort before giving up — 6 Sep 2026, owner instruction: recover
+    scoreable images instead of reporting a bare dash wherever a
+    legitimate route exists.
+
+    Returns None if there were no URLs to try and no page_url either.
     """
     urls = [cand.image_url, *cand.image_url_fallbacks]
     urls = [u for u in urls if u]
-    if not urls:
-        return None
 
     tried: list[str] = []
     last_non_ok: _VariantOutcome | None = None
     for url in urls:
         tried.append(url)
         outcome = _classify_fetch(http, url)
-        outcome = replace(outcome, attempted=tuple(tried))
+        outcome = replace(
+            outcome,
+            attempted=tuple(tried),
+            diagnostics=replace(outcome.diagnostics, routes_tried=len(tried)),
+        )
         if outcome.status == "ok":
             return outcome
         if outcome.status == "blocked":
             return outcome  # no point trying a different size of a blocked domain
         last_non_ok = outcome
 
-    return last_non_ok
+    if last_non_ok is not None and last_non_ok.status == "blocked":
+        return last_non_ok
+
+    if not cand.page_url:
+        return last_non_ok
+
+    cascade = resolve_page_to_image_url(http, cand.page_url)
+    cascade_route_names = ",".join(cascade.routes_tried) or "none"
+    if cascade.image_url:
+        tried.append(f"{cascade.image_url} (via {cascade_route_names})")
+        outcome = _classify_fetch(http, cascade.image_url)
+        return replace(outcome, attempted=tuple(tried))
+
+    # Cascade found nothing either. Record that routes WERE tried, even
+    # though none of them produced a URL to fetch — this is what lets a
+    # reject-fetch-failed / reject-no-image message say "resolver tried
+    # opengraph,oembed" instead of implying nothing was ever attempted.
+    resolver_note = (f"resolver:{cascade_route_names}",)
+    if last_non_ok is not None:
+        # There WAS an original image URL and it failed; keep url pointing
+        # at that original URL (never the page URL — that produces the
+        # exact "downloads HTML, misreports as no-face" bug this module's
+        # docstring already documents once).
+        return replace(last_non_ok, attempted=tuple(tried) + resolver_note)
+    # No original image URL AND the cascade found nothing. url MUST stay
+    # empty — never cand.page_url — so downstream's `if not
+    # cand.image_url` (run_pipeline) correctly reports reject-no-image
+    # rather than silently treating the page URL as an image URL.
+    return _VariantOutcome("fetch-failed", "", attempted=tuple(tried) + resolver_note)
 
 
 def run_pipeline(
@@ -240,7 +334,7 @@ def run_pipeline(
     # from the 50px quality gate. Each candidate's own walk is sequential
     # (largest-first, stop at first success), but candidates run in
     # parallel with each other, same pattern as the orchestrator itself.
-    with_urls = [c for c in all_candidates if c.image_url or c.image_url_fallbacks]
+    with_urls = [c for c in all_candidates if c.image_url or c.image_url_fallbacks or c.page_url]
     outcomes: dict[int, _VariantOutcome] = {}
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = {pool.submit(_resolve_candidate_image, http, c): c for c in with_urls}
@@ -270,6 +364,7 @@ def run_pipeline(
 
     scored: list[tuple[Candidate, float | None, int]] = []
     prerejected: list[tuple[Candidate, str, str]] = []
+    candidate_diagnostics: dict[str, FetchDiagnostics] = {}
 
     for cand in deduped:
         if not cand.image_url:
@@ -289,6 +384,8 @@ def run_pipeline(
 
         outcome = outcome_by_url.get(cand.image_url)
         data = outcome.image_bytes if outcome else None
+        if outcome is not None:
+            candidate_diagnostics[cand.image_url] = outcome.diagnostics
 
         if outcome is not None and outcome.status == "blocked":
             # Distinguish a platform that deliberately refuses programmatic
@@ -326,19 +423,41 @@ def run_pipeline(
 
         if data is None:
             attempted = outcome.attempted if outcome is not None else (cand.image_url,)
-            if len(attempted) > 1:
-                reason = (
-                    f"could not fetch {attempted[0]} — tried {len(attempted)} size "
-                    f"variant(s), all failed (last: {attempted[-1]})"
+            # attempted may end with a "resolver:<routes>" marker appended
+            # by _resolve_candidate_image when the size-variant walk was
+            # exhausted and the page-resolver cascade (verify/resolver.py)
+            # was also tried. Split that out so the message never calls a
+            # resolver route a "size variant" — those are a genuinely
+            # different recovery mechanism and conflating them in the
+            # wording is exactly the kind of inaccurate-but-plausible
+            # message R-24 forbids.
+            size_variants = [a for a in attempted if not a.startswith("resolver:")]
+            resolver_marker = next((a for a in attempted if a.startswith("resolver:")), None)
+
+            parts = [f"could not fetch {size_variants[0] if size_variants else cand.image_url}"]
+            if len(size_variants) > 1:
+                parts.append(
+                    f"tried {len(size_variants)} size variant(s), all failed "
+                    f"(last: {size_variants[-1]})"
                 )
-            else:
-                reason = f"could not fetch {cand.image_url}"
+            if resolver_marker:
+                routes = resolver_marker.removeprefix("resolver:")
+                parts.append(
+                    f"page-resolver cascade also tried ({routes}), found nothing usable"
+                    if routes and routes != "none"
+                    else "page-resolver cascade found no applicable route"
+                )
+            reason = " — ".join(parts)
             prerejected.append((cand, "reject-fetch-failed", reason))
             continue
 
-        score, faces_found, prereject_reason = _score_one_candidate(
+        score, faces_found, prereject_reason, largest_face_px = _score_one_candidate(
             detector, embedder, probe_vec, data, min_face_px
         )
+        if outcome is not None:
+            candidate_diagnostics[cand.image_url] = replace(
+                outcome.diagnostics, faces_found=faces_found, largest_face_px=largest_face_px
+            )
         if prereject_reason == "reject-face-too-small":
             prerejected.append(
                 (cand, prereject_reason, f"all {faces_found} face(s) below {min_face_px}px minimum")
@@ -362,4 +481,5 @@ def run_pipeline(
         images_fetched=len(images),
         images_deduped=deduped_pre_fetch_count - len(deduped),
         best_image_bytes=best_image_bytes,
+        candidate_diagnostics=candidate_diagnostics,
     )

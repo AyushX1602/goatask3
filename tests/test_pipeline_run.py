@@ -420,13 +420,21 @@ def test_fetch_failed_message_reports_variants_tried_not_just_the_last(
     row = result.match.all_scored[0]
     assert row.decision == "reject-fetch-failed"
     assert primary in row.reason, "must name the primary URL, not only the last tried"
-    assert "3 size variant(s)" in row.reason, "must disclose how many were attempted"
+    assert "3 size variant(s)" in row.reason, "must disclose how many size variants were attempted"
+    # The page-resolver cascade (verify/resolver.py) also ran, since the
+    # size-variant walk was exhausted — its own attempts must be reported
+    # SEPARATELY from "size variant(s)", never conflated with them (R-24:
+    # a resolver route is not a size variant, and calling it one would be
+    # a plausible-but-inaccurate message).
+    assert "size variant" not in row.reason.split("page-resolver")[-1]
 
 
 def test_single_url_candidate_keeps_the_simple_fetch_failed_message(
     detector, embedder, monkeypatch
 ):
-    """No variant chain means no variant talk — the message stays plain."""
+    """No variant chain means no size-variant talk — the message stays
+    plain about size variants specifically, even though the page-resolver
+    cascade still runs and is reported (that part is real, honest work)."""
     probe_vec, png = _probe(detector, embedder, FIX / "obama1.jpg")
     _patch_http_cache(monkeypatch, FakeHttpCache({}))
 
@@ -437,3 +445,32 @@ def test_single_url_candidate_keeps_the_simple_fetch_failed_message(
     row = result.match.all_scored[0]
     assert row.decision == "reject-fetch-failed"
     assert "size variant" not in row.reason
+
+
+def test_candidate_fetch_uses_browser_user_agent_not_the_research_ua(detector, embedder, monkeypatch):
+    """6 Sep 2026: generic sites block our self-describing research UA as
+    blanket bot mitigation; a browser UA recovers those fetches. Must be
+    used for candidate image fetches specifically, never for our own API
+    calls to GCV/SerpApi (those keep the descriptive UA, R-12)."""
+    from pipeline.cache.http_cache import BROWSER_USER_AGENT
+
+    probe_vec, png = _probe(detector, embedder, FIX / "obama1.jpg")
+    captured_headers = {}
+
+    class RecordingHttp:
+        def get(self, url, **kw):
+            captured_headers["headers"] = kw.get("headers")
+
+            class R:
+                ok = True
+                content = (FIX / "obama2.jpg").read_bytes()
+            return R()
+
+    monkeypatch.setattr("pipeline.verify.pipeline_run.get_http_cache", lambda: RecordingHttp())
+
+    provider = FakeProvider(
+        [Candidate(image_url="https://example.test/photo.jpg", page_url="https://x.com/1", source="fake")]
+    )
+    run_pipeline(png, probe_vec, [provider], detector, embedder, policy=POLICY)
+
+    assert captured_headers["headers"] == {"User-Agent": BROWSER_USER_AGENT}

@@ -220,9 +220,21 @@ gotten to them. See `memory.md` §3m for the full narrative.
 | Negatives harvest | ✅ DONE | `calibration/negatives_harvested.json` — 41 genuine negatives across two runs + the 68px YouTube Short false negative, each `label_source: "manual_inspection"` |
 | Consent quarantine | ✅ DONE | The two runs (private individual; suspected-synthetic avatar) moved to `calibration/quarantine/` (gitignored), page/image URLs replaced with sha256, never committed, never used in the recording |
 | Diagnostics reason-column fix | ✅ DONE | Full reason moved to a `title` tooltip; visible cell text is short and non-wrapping (`shortenReason()` in `app.js`). No row can show a bare `—` with no visible reason (R-21 rule 4) |
-| Re-fetch verifier check | ⬜ NOT STARTED | 4 states: `PASS`, `PASS_PERCEPTUAL` (sha256 differs, phash Hamming ≤ 6 — CDN re-encode), `CONTENT_CHANGED` (Hamming > 6), `UNREACHABLE`. Origin-URL-first capped to the two known mappings (twimg `?name=orig`, YouTube `maxresdefault`) — do not build a general origin-resolver. `refetched_from` recorded separately from `verified_against`. **Budget cap: if this runs past 2h, ship the four states without origin-first and document as a limitation.** |
-| Headline selection (citability sort) | ⬜ NOT STARTED | Pure presentation sort over the D-35 identity cluster: `max(cluster, key=(citability_rank, content_kind_rank, score))`. Citability: openable platform page > bare CDN media URL. Content kind: post > profile > unknown. Score never re-enters the accept decision — R-03/D-35 stay intact |
-| SerpApi `image` over `thumbnail` | ⬜ NOT STARTED | One-line fix in `web_detect.py`'s `parse_serpapi_lens` |
+| Re-fetch verifier check | ⬜ NOT STARTED (deprioritised) | Superseded in practice by the resolver cascade below, which solves the more common problem (missing image, not stale image). Still open if time allows |
+| Headline selection (citability sort) | ✅ DONE (6 Sep 2026) | `matcher.py`: within the D-35 identity cluster, `min(above, key=(not-citable, content_kind_rank, -score))`. Verified live: X media hit (0.9806, not citable — bare JPEG) now `corroborating`; YouTube hit (0.9618, a real openable page) is `ACCEPT`. Score never re-enters the accept decision. `media_urls.is_citable_page()` new. 4 new tests |
+| SerpApi `image` over `thumbnail` | ✅ DONE (6 Sep 2026) | `parse_serpapi_lens` now prefers full-size `image`/`images[0]`; `raw["image_field_used"]` records which field won. 3 new tests |
+
+### Additional G1-adjacent work landed 6 Sep 2026 (owner instruction: "use whats best ... real crawling instead of --")
+
+| # | Item | Status | Notes |
+|---|---|---|---|
+| T1.1 | Meta/TikTok wall re-measured with a browser UA | ✅ DONE | `scripts/probe_meta_wall.py`. Result: **no change** — Meta/Instagram return byte-identical stubs under research-UA vs browser-UA vs browser-UA+referer; TikTok's `/api/img/` endpoint timed out under all three. The wall is real server-side access control, not naive UA sniffing. Documented in `allowlist.py` and `rules.md` |
+| — | Browser UA for candidate image fetches (generic sites) | ✅ DONE | `http_cache.BROWSER_USER_AGENT`, used only for one-off candidate fetches (never our own GCV/SerpApi API calls, which keep the descriptive R-12 UA). Distinct from T1.1: this targets ordinary blanket bot-mitigation on non-Meta/TikTok hosts, and DOES help there |
+| — | Page-resolver cascade | ✅ DONE | New `pipeline/verify/resolver.py`: OpenGraph/Twitter Card meta-tag extraction, keyless oEmbed (YouTube, X), Reddit `.json`. Tried as a last resort when the normal image-URL walk is exhausted. All keyless, no login, no scraper package, no crawler-UA impersonation (I-05). 25 new tests |
+| — | Real diagnostics instead of a bare `—` | ✅ DONE | `FetchDiagnostics` (HTTP status, content-type, byte count, image dimensions, faces found, largest face px, routes tried) threaded through `pipeline_run.py` -> `build_audit()` -> UI. A row with no cosine score now shows real measured observations instead of a dash or a fabricated number |
+| — | `POST /api/anchor/{run_id}`, `/api/verify/{run_id}`, `/api/tamper/{run_id}` | ✅ DONE (G4) | Same `pipeline.chain.*` functions the CLI uses. Tamper endpoint mutates a scratch copy only — verified live and by test that the real `evidence.json` is never touched. UI gained a "3. Blockchain" panel with anchor/verify/tamper buttons |
+
+All items verified live against the real running Anvil chain and demo server, not just unit tests. 224 tests passing, pyflakes clean.
 
 **Test methodology change (owner-approved):** stop sampling random X avatars
 for testing — they are disproportionately synthetic, stolen, or of people

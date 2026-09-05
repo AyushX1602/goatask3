@@ -78,12 +78,30 @@ PLATFORM_DOMAINS: dict[str, str] = {
 }
 
 # Platforms that serve media only to their own crawlers, so we can never
-# fetch the image to run our own face check. Verified 5 Sep 2026 against
-# our UA, a browser UA, and browser UA + Referer -- all three identical:
-#   fbsbx.com / instagram.com / facebook.com -> 200 with a tiny text/html stub
-#   tiktok.com/api/img/...                   -> blocked (verified live)
-# This is deliberate access control on their side, not blocking we can
-# route around. Recorded so the pipeline can explain a rejection honestly
+# fetch the image to run our own face check. Verified twice, six months
+# apart in probe terms but same session: our research-tool UA, an ordinary
+# desktop browser UA, and browser UA + Referer: https://www.google.com/ —
+# RE-MEASURED 6 Sep 2026 (scripts/probe_meta_wall.py, owner instruction:
+# "use whats best ... real crawling instead of --") specifically to check
+# whether the original finding was a naive UA block rather than a real
+# wall. It was not:
+#   lookaside.fbsbx.com       -> 200, IDENTICAL 390-byte text/html stub,
+#                                all three routes, byte-for-byte
+#   lookaside.instagram.com   -> 200, IDENTICAL ~620-680KB text/html blob
+#                                (larger than Meta's, still not an image),
+#                                all three routes
+#   tiktok.com/api/img/...    -> connection TIMEOUT, all three routes
+#                                (not even a UA-dependent response —
+#                                unreachable regardless of headers)
+# A browser UA changes NOTHING for either platform. This is server-side
+# access control (likely session/referer-chain validation, not naive
+# User-Agent sniffing), and it is not something a header swap defeats.
+# We do not send facebookexternalhit/Googlebot/Twitterbot or any UA that
+# claims to BE a platform's own privileged crawler — that would be a
+# materially different and disallowed move (impersonating a specific
+# company's crawler to obtain access granted only to it), distinct from
+# sending an ordinary browser UA, which is honest about being an ordinary
+# HTTP client. Recorded so the pipeline can explain a rejection honestly
 # instead of reporting a misleading generic fetch failure.
 MEDIA_BLOCKED_PLATFORMS: frozenset[str] = frozenset(
     {"Instagram", "Facebook", "Meta"}

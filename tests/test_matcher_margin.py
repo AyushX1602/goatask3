@@ -194,3 +194,92 @@ def test_unverifiable_platform_hits_excludes_similar_match_kind():
     prerejected = [(lookalike_cand, "reject-platform-blocked", "blocked")]
     result = _score([], POLICY, allowed_domains=SOCIAL_ALLOW, prerejected=prerejected)
     assert result.unverifiable_platform_hits == ()
+
+
+# ---------------- Citability-aware headline selection (6 Sep 2026) ----------------
+#
+# Found live: an X media hit scored 0.9806 (bare pbs.twimg.com/....jpg,
+# page_url == image_url, no derivable parent post) while a YouTube hit in
+# the SAME identity cluster scored 0.9618 (a real, openable watch?v= page).
+# Citing the X URL as the headline ACCEPT would open a raw JPEG in a
+# browser, not a post. Both are equally accepted matches (both pass
+# threshold+margin); only WHICH one is displayed as the headline changes.
+
+
+def _x_media_candidate(score: float) -> tuple[Candidate, float, int]:
+    """A bare X media hit: page_url == image_url, no derivable post —
+    is_citable_page() returns False for exactly this shape."""
+    url = "https://pbs.twimg.com/media/HRSsRstbMAEzQxl.jpg?name=orig"
+    return (Candidate(image_url=url, page_url=url, source="gcv_web_detection"), score, 1)
+
+
+def _youtube_post_candidate(score: float) -> tuple[Candidate, float, int]:
+    return (
+        Candidate(
+            image_url="https://i.ytimg.com/vi/nDj8MIyitUs/maxresdefault.jpg",
+            page_url="https://www.youtube.com/watch?v=nDj8MIyitUs",
+            source="gcv_web_detection",
+        ),
+        score,
+        1,
+    )
+
+
+def test_citable_youtube_page_wins_headline_over_higher_scoring_x_media_url():
+    """The exact live case: X scored HIGHER but is not citable."""
+    scored = [
+        _x_media_candidate(0.9806),
+        _youtube_post_candidate(0.9618),
+    ]
+    result = score_candidates(scored, POLICY, allowed_domains=SOCIAL_ALLOW)
+
+    assert result.verdict == "MATCH"
+    assert result.best.candidate.page_url == "https://www.youtube.com/watch?v=nDj8MIyitUs"
+    assert result.best.decision == "ACCEPT"
+
+    # The X hit is still accepted evidence — just not the headline.
+    x_row = next(r for r in result.all_scored if "twimg" in r.candidate.page_url)
+    assert x_row.decision == "corroborating"
+
+
+def test_headline_selection_never_affects_the_accept_decision_itself():
+    """R-03/D-35: every candidate in `above` already independently passed
+    threshold+margin BEFORE headline selection runs. Citability only
+    changes WHICH one is displayed as ACCEPT, never whether the run is a
+    MATCH at all, and never a candidate's own score."""
+    scored = [_x_media_candidate(0.9806), _youtube_post_candidate(0.9618)]
+    result = score_candidates(scored, POLICY, allowed_domains=SOCIAL_ALLOW)
+
+    scores = {r.candidate.page_url: r.score for r in result.all_scored}
+    assert scores["https://pbs.twimg.com/media/HRSsRstbMAEzQxl.jpg?name=orig"] == 0.9806
+    assert scores["https://www.youtube.com/watch?v=nDj8MIyitUs"] == 0.9618
+
+
+def test_single_candidate_still_becomes_headline_even_if_not_citable():
+    """No cluster to prefer within — a lone accepted candidate is still
+    the headline regardless of citability. Citability only matters when
+    there is a CHOICE between multiple agreeing candidates."""
+    scored = [_x_media_candidate(0.9806)]
+    result = score_candidates(scored, POLICY, allowed_domains=SOCIAL_ALLOW)
+
+    assert result.verdict == "MATCH"
+    assert result.best.candidate.page_url == "https://pbs.twimg.com/media/HRSsRstbMAEzQxl.jpg?name=orig"
+
+
+def test_content_kind_post_preferred_over_profile_when_both_citable():
+    """Two citable pages, same platform family: a real post beats a
+    profile page even if the profile scored slightly higher."""
+    post = (
+        Candidate(
+            image_url="https://avatars.githubusercontent.com/u/1?v=4",
+            page_url="https://github.com/someone",  # profile (bare github.com/<user>)
+            source="gcv_web_detection",
+        ),
+        0.95,
+        1,
+    )
+    yt_post = _youtube_post_candidate(0.94)
+    result = score_candidates([post, yt_post], POLICY, allowed_domains=SOCIAL_ALLOW)
+
+    assert result.verdict == "MATCH"
+    assert result.best.candidate.page_url == "https://www.youtube.com/watch?v=nDj8MIyitUs"
