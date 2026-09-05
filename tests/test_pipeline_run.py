@@ -174,19 +174,42 @@ def test_off_allowlist_candidate_never_reported_even_if_it_would_match(detector,
     assert result.match.all_scored[0].decision == "reject-domain"
 
 
-def test_fetch_failure_is_logged_not_fatal(detector, embedder, monkeypatch):
+def test_generic_fetch_failure_is_logged_not_fatal(detector, embedder, monkeypatch):
+    """A non-platform host that simply fails to serve the image."""
     probe_vec, png = _probe(detector, embedder, FIX / "obama1.jpg")
-    fake_http = FakeHttpCache({})  # nothing resolves
-    _patch_http_cache(monkeypatch, fake_http)
+    _patch_http_cache(monkeypatch, FakeHttpCache({}))  # nothing resolves
 
     provider = FakeProvider(
-        [Candidate(image_url="https://instagram.com/dead", page_url="https://instagram.com/dead", source="fake")]
+        [Candidate(image_url="https://reddit.com/dead.jpg", page_url="https://reddit.com/r/x/comments/dead", source="fake")]
     )
-
     result = run_pipeline(png, probe_vec, [provider], detector, embedder, policy=POLICY)
 
     assert result.match.verdict == "NO_MATCH"
     assert result.match.all_scored[0].decision == "reject-fetch-failed"
+
+
+def test_media_blocked_platform_gets_its_own_honest_reason(detector, embedder, monkeypatch):
+    """Instagram/Facebook/TikTok refuse programmatic media access (verified
+    live under three client profiles). Reporting that as a plain
+    "could not fetch" reads as our defect; it is theirs by design, and the
+    post WAS found — it just cannot be independently verified."""
+    probe_vec, png = _probe(detector, embedder, FIX / "obama1.jpg")
+    _patch_http_cache(monkeypatch, FakeHttpCache({}))
+
+    provider = FakeProvider(
+        [
+            Candidate(
+                image_url="https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=1",
+                page_url="https://www.instagram.com/p/DXmJY6plgbV/",
+                source="fake",
+            )
+        ]
+    )
+    result = run_pipeline(png, probe_vec, [provider], detector, embedder, policy=POLICY)
+
+    row = result.match.all_scored[0]
+    assert row.decision == "reject-platform-blocked"
+    assert "unverifiable" in row.reason
 
 
 def test_too_small_face_is_prerejected_not_scored(detector, embedder, monkeypatch):

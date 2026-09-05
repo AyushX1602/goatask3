@@ -183,6 +183,8 @@ function renderResults(data) {
 
   // R-21: on NO_MATCH the verdict is the headline. Rejected candidates go
   // behind a "show diagnostics" toggle, never presented as ranked suggestions.
+  const corroborating = data.candidates.filter((c) => c.decision === "corroborating").length;
+
   if (!isMatch) {
     headlineNoMatch.style.display = "block";
     headlineNoMatch.innerHTML =
@@ -191,11 +193,16 @@ function renderResults(data) {
       `not every face has a matching public post.`;
   } else {
     headlineNoMatch.style.display = "none";
+    if (corroborating > 0) {
+      summaryText.textContent +=
+        ` Plus ${corroborating} corroborating match(es) above threshold.`;
+    }
   }
 
   diagnostics.style.display = "block";
   diagnosticsSummary.textContent = isMatch
-    ? `show diagnostics (${data.candidates.length} candidate(s) examined, including rejects)`
+    ? `show diagnostics (${data.candidates.length} candidate(s) examined` +
+      (corroborating > 0 ? `, ${corroborating} corroborating` : "") + `)`
     : `show diagnostics (${data.candidates.length} rejected candidate(s) — noise, not suggestions)`;
   candidateTable.style.display = "table";
 
@@ -208,10 +215,14 @@ function renderResults(data) {
   for (const c of data.candidates) {
     const tr = document.createElement("tr");
     if (c.decision === "ACCEPT") tr.classList.add("accept");
+    // 'corroborating' is a real match above threshold, just not the
+    // top-ranked one. It must NOT be styled as a rejection (same honesty
+    // principle as R-21 — never misrepresent what the engine concluded).
+    if (c.decision === "corroborating") tr.classList.add("corroborating");
 
     const scorePct = c.score !== null ? Math.max(0, Math.min(100, c.score * 100)) : 0;
     const scoreCell = c.score !== null
-      ? `<span class="score-bar"><span class="score-fill ${c.decision === "ACCEPT" ? "accept" : ""}" style="width:${scorePct}%"></span></span>${c.score.toFixed(4)}`
+      ? `<span class="score-bar"><span class="score-fill ${c.decision === "ACCEPT" || c.decision === "corroborating" ? "accept" : ""}" style="width:${scorePct}%"></span></span>${c.score.toFixed(4)}`
       : "—";
 
     const postCell = c.page_url

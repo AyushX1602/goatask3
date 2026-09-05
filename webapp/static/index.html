@@ -76,6 +76,9 @@
   th { text-align: left; color: #8b949e; font-weight: 500; padding: 8px 6px; border-bottom: 1px solid #30363d; font-size: 11px; text-transform: uppercase; }
   td { padding: 8px 6px; border-bottom: 1px solid #21262d; vertical-align: middle; }
   tr.accept { background: rgba(35, 134, 54, 0.12); }
+  /* A real match above threshold, just not the top-ranked one. Must read as
+     supporting evidence, never as a rejection. */
+  tr.corroborating { background: rgba(31, 111, 235, 0.10); }
   a { color: #58a6ff; text-decoration: none; }
   a:hover { text-decoration: underline; }
   .score-bar { display: inline-block; height: 6px; border-radius: 3px; background: #30363d; width: 80px; position: relative; vertical-align: middle; margin-right: 6px; }
@@ -127,8 +130,12 @@
         </div>
         <input type="file" id="fileInput" accept="image/*" style="display:none;" />
         <img id="uploadPreview" alt="upload preview" />
-        <input type="text" id="publicUrlInput" placeholder="Optional: public URL of this image (enables SerpApi)"
-               style="width:100%; margin-top:8px; padding:6px; background:#0d1117; border:1px solid #30363d; border-radius:4px; color:#e6edf3; font-size:12px;" />
+        <!-- The public-URL field is gone: GCV WEB_DETECTION (the primary
+             backend) accepts raw image bytes, so no hosted copy is needed.
+             It only ever existed for the SerpApi fallback, which cannot
+             take bytes. Kept as a hidden input so the SerpApi path still
+             works if someone forces WEB_DETECT_BACKEND=serpapi. -->
+        <input type="hidden" id="publicUrlInput" value="" />
         <button id="uploadBtn" disabled>Scan uploaded image</button>
       </div>
 

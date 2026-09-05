@@ -16,7 +16,7 @@ from pipeline.search.base import Candidate, ProviderReport, SearchProvider
 
 
 def gather(
-    aligned_face_png: bytes,
+    search_image_bytes: bytes,
     probe_vec,
     providers: list[SearchProvider],
     timeout_s: float = 45.0,
@@ -52,9 +52,9 @@ def gather(
             search_fn = provider.search
             accepts_url = "public_image_url" in inspect.signature(search_fn).parameters
             if accepts_url:
-                cands = search_fn(aligned_face_png, probe_vec, public_image_url=public_image_url)
+                cands = search_fn(search_image_bytes, probe_vec, public_image_url=public_image_url)
             else:
-                cands = search_fn(aligned_face_png, probe_vec)
+                cands = search_fn(search_image_bytes, probe_vec)
             err = None
         except Exception as exc:  # R-14: provider errors never propagate
             cands = []

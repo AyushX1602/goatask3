@@ -36,6 +36,7 @@ from pipeline.face.embed import FaceEmbedder
 from pipeline.face.liveness import LivenessChecker
 from pipeline.face.quality import passes as quality_passes, probe_error_message
 from pipeline.search.bluesky import BlueskyProvider
+from pipeline.search.image_prep import prepare_search_image
 from pipeline.search.web_detect import WebDetectProvider
 from pipeline.verify.pipeline_run import PipelineResult, run_pipeline
 
@@ -130,6 +131,13 @@ async def _handle_probe(
     crop_bytes = png_bytes.tobytes() if ok else b""
     crop_b64 = base64.b64encode(crop_bytes).decode("ascii") if ok else None
 
+    # The SEARCH QUERY is the original photograph, NOT the aligned crop.
+    # Reverse image search matches against full photographs; sending the
+    # 112x112 warped crop measurably degraded results and, on one probe,
+    # caused the API to not recognise the subject at all. See
+    # pipeline/search/image_prep.py for the measured comparison.
+    search_image = prepare_search_image(img)
+
     liveness_label = liveness.label if is_live_capture else "not_applicable"
     liveness_passed = liveness.passed if is_live_capture else True
 
@@ -138,7 +146,8 @@ async def _handle_probe(
         "probe_vec": embedding.vec,
         "embedding": embedding,  # F7: build_evidence needs the full object, R-01: never leaves this process
         "is_live_capture": is_live_capture,
-        "aligned_png": crop_bytes,
+        "aligned_png": crop_bytes,  # for the UI preview + embedding provenance
+        "search_image": search_image,  # what actually goes to the search provider
         "liveness": {
             "passed": liveness_passed,
             "score": liveness.score if is_live_capture else None,
@@ -201,7 +210,8 @@ def search(run_id: str) -> SearchResponse:
 
     run_state = _runs[run_id]
     probe_vec = run_state["probe_vec"]
-    aligned_png = run_state["aligned_png"]
+    # Original photograph, not the aligned crop — see image_prep.py
+    search_image = run_state["search_image"]
     public_image_url = run_state.get("public_image_url")
 
     primary_result = None
@@ -209,7 +219,7 @@ def search(run_id: str) -> SearchResponse:
 
     if _web_detect.available():
         primary_result = run_pipeline(
-            aligned_png, probe_vec, [_web_detect], _detector, _embedder,
+            search_image, probe_vec, [_web_detect], _detector, _embedder,
             public_image_url=public_image_url,
         )
         primary_providers_queried = [_web_detect.name]
@@ -227,7 +237,7 @@ def search(run_id: str) -> SearchResponse:
         if not _bluesky_crawled:
             _bluesky.crawl(_detector, _embedder)
             _bluesky_crawled = True
-        fallback_result = run_pipeline(aligned_png, probe_vec, [_bluesky], _detector, _embedder)
+        fallback_result = run_pipeline(search_image, probe_vec, [_bluesky], _detector, _embedder)
 
         # Merge so the audit trail shows BOTH the failed/empty primary
         # attempt (if one was made) and the fallback attempt — never

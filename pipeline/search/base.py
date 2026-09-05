@@ -45,7 +45,7 @@ class SearchProvider(Protocol):
         is what makes the zero-API-key quickstart work (prd.md S10)."""
         ...
 
-    def search(self, aligned_face_png: bytes, probe_vec) -> list[Candidate]:
+    def search(self, search_image_bytes: bytes, probe_vec) -> list[Candidate]:
         """probe_vec: the (512,) L2-normalised probe embedding, passed as a
         plain array so this module has no dependency on pipeline.face
         (architecture.md 3 boundary table)."""

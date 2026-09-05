@@ -25,6 +25,9 @@ class ScoredCandidate:
 @dataclass(frozen=True)
 class MatchResult:
     best: ScoredCandidate | None
+    # The highest-scoring candidate BELOW threshold — i.e. the best
+    # non-match. Margin is measured against this, deliberately NOT against
+    # the second-best match; see the reasoning in score_candidates().
     runner_up: ScoredCandidate | None
     all_scored: list[ScoredCandidate]
     threshold: float
@@ -87,30 +90,82 @@ def score_candidates(
         return MatchResult(None, None, results, policy.threshold, policy.margin, "NO_MATCH")
 
     best = scoreable[0]
-    runner_up = next(
-        (r for r in scoreable[1:] if r.candidate.page_url != best.candidate.page_url),
-        None,
-    )
-    margin = best.score - (runner_up.score if runner_up else -1.0)
+
+    # Margin is measured against the best NON-MATCHING candidate, i.e. the
+    # highest scorer that falls BELOW threshold — not against the runner-up.
+    #
+    # Why: the margin rule exists to answer "is the top match clearly
+    # separated from the population of things that are NOT this person?"
+    # Measuring against the runner-up answers a different and wrong
+    # question, because a public figure has many genuine photos indexed
+    # across the web and they all score similarly high. In a real run for
+    # Alia Bhatt we saw 0.9225 / 0.9211 / 0.9164 / 0.9072 across linkedin,
+    # youtube and reddit — four independent confirmations of the correct
+    # person, all rejected because they agreed with each other to within
+    # 0.0014. That inverted the rule's intent: abundant corroboration was
+    # being treated as ambiguity.
+    #
+    # Multiple above-threshold candidates are therefore CORROBORATION, and
+    # are reported as such rather than as rejections.
+    above = [r for r in scoreable if r.score >= policy.threshold]
+    below = [r for r in scoreable if r.score < policy.threshold]
+    best_non_match = below[0] if below else None  # already sorted descending
+    margin = best.score - (best_non_match.score if best_non_match is not None else -1.0)
+
+    passes_threshold = best.score >= policy.threshold
+    passes_margin = margin >= policy.margin
+    corroborating = max(0, len(above) - 1)
 
     verdict = "NO_MATCH"
     for i, r in enumerate(results):
         if r.decision != "pending":
             continue
-        if r is best and best.score >= policy.threshold and margin >= policy.margin:
-            results[i] = ScoredCandidate(r.candidate, r.score, r.faces_found, "ACCEPT", f"score {r.score:.4f} >= threshold {policy.threshold}, margin {margin:.4f} >= {policy.margin}")
+
+        if r is best and passes_threshold and passes_margin:
+            extra = (
+                f", {corroborating} corroborating match(es) above threshold"
+                if corroborating
+                else ""
+            )
+            sep = (
+                f"margin {margin:.4f} >= {policy.margin} vs best non-match "
+                f"{best_non_match.score:.4f}"
+                if best_non_match is not None
+                else "no sub-threshold candidate to compare against"
+            )
+            results[i] = ScoredCandidate(
+                r.candidate, r.score, r.faces_found, "ACCEPT",
+                f"score {r.score:.4f} >= threshold {policy.threshold}, {sep}{extra}",
+            )
             verdict = "MATCH"
         elif r.score < policy.threshold:
-            results[i] = ScoredCandidate(r.candidate, r.score, r.faces_found, "reject-below-threshold", f"score {r.score:.4f} < threshold {policy.threshold}")
+            results[i] = ScoredCandidate(
+                r.candidate, r.score, r.faces_found, "reject-below-threshold",
+                f"score {r.score:.4f} < threshold {policy.threshold}",
+            )
+        elif r is not best:
+            # Above threshold but not the top-ranked result. This is a real
+            # match too; we report a single best one and record the rest as
+            # supporting evidence, never as a rejection.
+            results[i] = ScoredCandidate(
+                r.candidate, r.score, r.faces_found, "corroborating",
+                f"score {r.score:.4f} >= threshold {policy.threshold}; "
+                "same identity, not the top-ranked result",
+            )
         else:
-            results[i] = ScoredCandidate(r.candidate, r.score, r.faces_found, "reject-margin", f"score {r.score:.4f} too close to runner-up (margin {margin:.4f} < {policy.margin})")
+            # best, above threshold, but not separated from the non-matching
+            # population — the genuine ambiguity case the rule guards against.
+            results[i] = ScoredCandidate(
+                r.candidate, r.score, r.faces_found, "reject-margin",
+                f"score {r.score:.4f} not separated from best non-match "
+                f"{best_non_match.score:.4f} (margin {margin:.4f} < {policy.margin})",
+            )
 
     best_final = next((r for r in results if r.decision == "ACCEPT"), None)
-    runner_final = runner_up
 
     return MatchResult(
         best=best_final,
-        runner_up=runner_final,
+        runner_up=best_non_match,
         all_scored=results,
         threshold=policy.threshold,
         margin_required=policy.margin,

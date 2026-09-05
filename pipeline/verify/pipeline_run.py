@@ -28,7 +28,7 @@ from pipeline.face.embed import FaceEmbedder
 from pipeline.face.quality import passes as quality_passes
 from pipeline.search.base import Candidate, ProviderReport, SearchProvider
 from pipeline.search.orchestrator import gather
-from pipeline.verify.allowlist import SOCIAL_ALLOW
+from pipeline.verify.allowlist import SOCIAL_ALLOW, is_media_blocked, platform_name
 from pipeline.verify.dedupe import dedupe
 from pipeline.verify.matcher import MatchResult, score_candidates
 
@@ -89,7 +89,7 @@ def _score_one_candidate(
 
 
 def run_pipeline(
-    aligned_face_png: bytes,
+    search_image_bytes: bytes,
     probe_vec: np.ndarray,
     providers: list[SearchProvider],
     detector: FaceDetector,
@@ -101,8 +101,10 @@ def run_pipeline(
 ) -> PipelineResult:
     """The single shared verification loop (F4).
 
-    aligned_face_png: the probe's aligned crop, PNG-encoded. Required by
-    the GCV backend (sent as base64 request content — design.md 2.1a).
+    search_image_bytes: the ORIGINAL photograph (JPEG), NOT the aligned
+    crop — see pipeline/search/image_prep.py for why this distinction is
+    load-bearing. Sent as base64 request content by the GCV backend
+    (design.md 2.1a).
 
     public_image_url: forwarded to providers whose search() accepts it (the
     serpapi backend, D-31 — it needs a publicly reachable URL and cannot
@@ -122,7 +124,7 @@ def run_pipeline(
     http = get_http_cache()
 
     all_candidates, provider_reports = gather(
-        aligned_face_png, probe_vec, providers, public_image_url=public_image_url
+        search_image_bytes, probe_vec, providers, public_image_url=public_image_url
     )
 
     identity_signals: list[str] = []
@@ -155,11 +157,44 @@ def run_pipeline(
     prerejected: list[tuple[Candidate, str, str]] = []
 
     for cand in deduped:
+        if not cand.image_url:
+            # The search provider gave us a page but no retrievable image
+            # for it, and no thumbnail could be derived. Distinct from
+            # reject-no-face: we never obtained an image to look at, so
+            # claiming "no face detected" would be misreporting.
+            prerejected.append(
+                (
+                    cand,
+                    "reject-no-image",
+                    "search result had no retrievable image URL, so the face "
+                    "could not be verified",
+                )
+            )
+            continue
+
         data = images.get(cand.image_url)
         if data is None:
-            prerejected.append(
-                (cand, "reject-fetch-failed", f"could not fetch {cand.image_url or '(empty url)'}")
-            )
+            # Distinguish a platform that deliberately refuses programmatic
+            # media access from an incidental network failure. Verified
+            # 5 Sep 2026: Instagram/Facebook return a tiny text/html stub
+            # and TikTok returns 403 on signed URLs, identically under a
+            # browser UA and a Referer — so this is not something we can
+            # route around, and saying "could not fetch" alone reads as a
+            # defect on our side when it is not.
+            if is_media_blocked(cand.image_url) or is_media_blocked(cand.page_url):
+                plat = platform_name(cand.image_url) or platform_name(cand.page_url)
+                prerejected.append(
+                    (
+                        cand,
+                        "reject-platform-blocked",
+                        f"{plat} serves media only to its own crawler, so the face "
+                        "cannot be independently verified — post found but unverifiable",
+                    )
+                )
+            else:
+                prerejected.append(
+                    (cand, "reject-fetch-failed", f"could not fetch {cand.image_url}")
+                )
             continue
 
         score, faces_found, prereject_reason = _score_one_candidate(

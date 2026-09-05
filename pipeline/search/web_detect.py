@@ -25,6 +25,7 @@ audit log as context and nothing more.
 from __future__ import annotations
 
 import base64
+import re
 from typing import Any
 
 import numpy as np
@@ -41,6 +42,54 @@ SERPAPI_ENDPOINT = "https://serpapi.com/search.json"
 # Response parsing — pure functions, so they can be tested against recorded
 # fixtures with no network and no API key (D-30).
 # --------------------------------------------------------------------------
+
+
+# Schemes that can never be fetched as an image. GCV returns
+# `x-raw-image:///<hash>` for images it holds internally but will not serve.
+UNFETCHABLE_SCHEMES = ("x-raw-image:",)
+
+
+def _derive_page_url(image_url: str) -> str | None:
+    """Derives the real POST url from a platform CDN image url.
+
+    GCV's standalone image arrays (fullMatchingImages / visuallySimilar)
+    give only an image url, so `page_url` used to be set to that same CDN
+    url. That produced an "accepted match" pointing at
+    `i.ytimg.com/vi/<id>/oardefault.jpg` — a thumbnail, not a post. The
+    brief asks for a matching social media POST, so a bare CDN image is
+    not a citable result.
+
+    Only derivable where the CDN path embeds a stable content id. YouTube
+    does; Reddit's preview.redd.it and X's pbs.twimg.com do not encode the
+    parent post, so those correctly stay un-derivable.
+    """
+    m = re.search(r"i\.ytimg\.com/vi/([A-Za-z0-9_-]{11})/", image_url)
+    if m:
+        return f"https://www.youtube.com/watch?v={m.group(1)}"
+    return None
+
+
+def _derive_image_url(page_url: str) -> str | None:
+    """Derives a real, fetchable thumbnail URL from a known platform's page
+    URL, for pages where GCV returned no matching-image URL of its own.
+
+    Without this, such pages previously fell back to using the PAGE url as
+    the image url — so the pipeline downloaded HTML, failed to decode it,
+    and reported the deeply misleading `reject-no-face` ("no face detected
+    in candidate image") when in fact no image was ever retrieved. Found
+    live on a Hrithik Roshan probe where four youtube.com results were
+    discarded this way.
+
+    Only patterns that are stable and documented are derived here; anything
+    else returns None and is reported honestly as having no image.
+    """
+    m = re.search(r"(?:youtube\.com/watch\?v=|youtu\.be/)([A-Za-z0-9_-]{11})", page_url)
+    if m:
+        # maxresdefault is not present for every video, but i.ytimg.com
+        # falls back rather than 404ing in most cases; the fetch layer
+        # treats a failure as reject-fetch-failed either way.
+        return f"https://i.ytimg.com/vi/{m.group(1)}/maxresdefault.jpg"
+    return None
 
 
 def parse_gcv(payload: dict[str, Any]) -> tuple[list[Candidate], list[str]]:
@@ -75,10 +124,23 @@ def parse_gcv(payload: dict[str, Any]) -> tuple[list[Candidate], list[str]]:
         images = (page.get("fullMatchingImages") or []) + (
             page.get("partialMatchingImages") or []
         )
-        image_url = next((i.get("url") for i in images if i.get("url")), None)
+        image_url = next(
+            (
+                i["url"]
+                for i in images
+                if i.get("url") and not i["url"].startswith(UNFETCHABLE_SCHEMES)
+            ),
+            None,
+        )
+        # Never fall back to the page URL as an image URL — that downloads
+        # HTML and misreports it as "no face detected". Derive a real
+        # thumbnail where the platform allows it, otherwise leave it empty
+        # and let the pipeline report `reject-no-image` honestly.
+        if not image_url:
+            image_url = _derive_image_url(page_url) or ""
         candidates.append(
             Candidate(
-                image_url=image_url or page_url,
+                image_url=image_url,
                 page_url=page_url,
                 source="gcv_web_detection",
                 provider_score=None,  # R-03
@@ -92,15 +154,18 @@ def parse_gcv(payload: dict[str, Any]) -> tuple[list[Candidate], list[str]]:
     for kind in ("fullMatchingImages", "partialMatchingImages", "visuallySimilarImages"):
         for img in web.get(kind) or []:
             url = img.get("url")
-            if not url:
+            if not url or url.startswith(UNFETCHABLE_SCHEMES):
                 continue
+            # Prefer a real post URL over the bare CDN image URL, so an
+            # accepted match cites something a human can actually open.
+            derived_page = _derive_page_url(url)
             candidates.append(
                 Candidate(
                     image_url=url,
-                    page_url=url,
+                    page_url=derived_page or url,
                     source="gcv_web_detection",
                     provider_score=None,  # R-03
-                    raw={"kind": kind},
+                    raw={"kind": kind, "page_derived_from_cdn": bool(derived_page)},
                 )
             )
 
@@ -254,7 +319,7 @@ class WebDetectProvider:
 
     def search(
         self,
-        aligned_face_png: bytes,
+        search_image_bytes: bytes,
         probe_vec: np.ndarray,
         public_image_url: str | None = None,
     ) -> list[Candidate]:
@@ -264,7 +329,7 @@ class WebDetectProvider:
         public_image_url is only needed by the serpapi backend (D-31).
         """
         if self.backend == "gcv":
-            candidates, signals = self._search_gcv(aligned_face_png)
+            candidates, signals = self._search_gcv(search_image_bytes)
         elif self.backend == "serpapi":
             if not public_image_url:
                 raise ValueError(

@@ -208,7 +208,7 @@ class BlueskyProvider:
 
     # --- SearchProvider interface ---------------------------------------
 
-    def search(self, aligned_face_png: bytes, probe_vec: np.ndarray) -> list[Candidate]:
+    def search(self, search_image_bytes: bytes, probe_vec: np.ndarray) -> list[Candidate]:
         hits = self.index.query(probe_vec, k=20)
         candidates = []
         for ref, _provider_similarity in hits:

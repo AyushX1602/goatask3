@@ -22,6 +22,7 @@ runs/*/probe.png
 contracts/out/
 contracts/cache/
 contracts/broadcast/*/31337/
+contracts/lib/
 
 # Calibration pair images (may contain real faces — never committed raw)
 calibration/pairs/*/

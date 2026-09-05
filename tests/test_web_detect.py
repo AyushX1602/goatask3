@@ -74,13 +74,21 @@ def test_gcv_keeps_non_social_candidates_for_the_audit_log():
     assert any(not is_allowed(c.page_url) for c in cands)
 
 
-def test_gcv_page_without_image_arrays_still_yields_a_candidate():
+def test_gcv_page_without_image_arrays_yields_a_candidate_with_no_image_url():
     """The wikipedia entry in the fixture has no fullMatchingImages and no
-    partialMatchingImages. It should fall back to the page URL, not crash."""
+    partialMatchingImages.
+
+    UPDATED 5 Sep 2026: this test previously asserted `image_url == page_url`,
+    which encoded a real bug as expected behaviour. Downloading a page URL
+    as an image fetches HTML, fails to decode, and gets misreported as
+    `reject-no-face` (see tests/test_web_detect_image_urls.py). The
+    candidate is still produced — so the page appears in the audit trail —
+    but with an empty image_url, which the pipeline reports honestly as
+    `reject-no-image`."""
     cands, _ = parse_gcv(load("gcv_web_detection_obama.json"))
     wiki = [c for c in cands if "wikipedia.org" in c.page_url]
     assert wiki, "page with no image arrays must still produce a candidate"
-    assert wiki[0].image_url == wiki[0].page_url
+    assert wiki[0].image_url == "", "must not reuse the page URL as an image URL"
 
 
 def test_gcv_entities_only_response_is_zero_candidates_not_an_error():
