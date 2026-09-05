@@ -1,0 +1,269 @@
+{
+  "run_id": "2026-09-05T18-19-36Z",
+  "started_at": 1788632377.014946,
+  "liveness": {
+    "passed": true,
+    "score": null,
+    "label": "not_applicable"
+  },
+  "providers": [
+    {
+      "name": "web_detect",
+      "available": true,
+      "attempted": true,
+      "latency_ms": 1868.273300002329,
+      "candidates_returned": 21,
+      "error": null
+    }
+  ],
+  "candidates": [
+    {
+      "rank": 0,
+      "page_url": "https://lookaside.fbsbx.com/lookaside/crawler/instagram/CsEf9xUr3YL/0/image.jpg",
+      "image_url": "https://lookaside.fbsbx.com/lookaside/crawler/instagram/CsEf9xUr3YL/0/image.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-platform-blocked",
+      "reason": "Meta serves media only to its own crawler, so the face cannot be independently verified \u2014 post found but unverifiable",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 1,
+      "page_url": "https://lookaside.instagram.com/seo/google_widget/crawler/?media_id=3977837684588329010",
+      "image_url": "https://lookaside.instagram.com/seo/google_widget/crawler/?media_id=3977837684588329010",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-platform-blocked",
+      "reason": "Instagram serves media only to its own crawler, so the face cannot be independently verified \u2014 post found but unverifiable",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 2,
+      "page_url": "https://cmsw.mit.edu/wp/wp-content/uploads/2015/08/Fox-Harrell-650x491.jpg",
+      "image_url": "https://cmsw.mit.edu/wp/wp-content/uploads/2015/08/Fox-Harrell-650x491.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-fetch-failed",
+      "reason": "could not fetch https://cmsw.mit.edu/wp/wp-content/uploads/2015/08/Fox-Harrell-650x491.jpg",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 3,
+      "page_url": "https://blackpast.org/wp-content/uploads/2024/08/malcolm-gladwell.jpg",
+      "image_url": "https://blackpast.org/wp-content/uploads/2024/08/malcolm-gladwell.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-fetch-failed",
+      "reason": "could not fetch https://blackpast.org/wp-content/uploads/2024/08/malcolm-gladwell.jpg",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 4,
+      "page_url": "https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=10237335748205582",
+      "image_url": "https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=10237335748205582",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-platform-blocked",
+      "reason": "Meta serves media only to its own crawler, so the face cannot be independently verified \u2014 post found but unverifiable",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 5,
+      "page_url": "https://cdn.mos.cms.futurecdn.net/v2/t:0,l:437,cw:1125,ch:1125,q:80,w:1125/TrT3r6fXvJDENQATkwjnxN.jpg",
+      "image_url": "https://cdn.mos.cms.futurecdn.net/v2/t:0,l:437,cw:1125,ch:1125,q:80,w:1125/TrT3r6fXvJDENQATkwjnxN.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": -0.055940546095371246,
+      "decision": "reject-domain",
+      "reason": "futurecdn.net not on social allowlist",
+      "match_kind": "partial"
+    },
+    {
+      "rank": 6,
+      "page_url": "https://charlie-p-2ac84d7056ca7f9d.s3.amazonaws.com/clips/thumbnails/000/005/009/medium/1HY6S51_080_lt.jpg?1456682328",
+      "image_url": "https://charlie-p-2ac84d7056ca7f9d.s3.amazonaws.com/clips/thumbnails/000/005/009/medium/1HY6S51_080_lt.jpg?1456682328",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": 0.08276320993900299,
+      "decision": "reject-domain",
+      "reason": "amazonaws.com not on social allowlist",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 7,
+      "page_url": "https://doximity-res.cloudinary.com/images/f_auto,q_auto,t_public_profile_photo_320x320/pxwlqzlcrqkh0kg3yxsq/robert-chatalbash-md-bay-shore-ny.jpg",
+      "image_url": "https://doximity-res.cloudinary.com/images/f_auto,q_auto,t_public_profile_photo_320x320/pxwlqzlcrqkh0kg3yxsq/robert-chatalbash-md-bay-shore-ny.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": 0.08435407280921936,
+      "decision": "reject-domain",
+      "reason": "cloudinary.com not on social allowlist",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 8,
+      "page_url": "https://icdn.lenta.ru/images/2024/09/16/13/20240916132144457/square_320_5d8429e21e1dc8d9a45113b5d83fee41.jpg",
+      "image_url": "https://icdn.lenta.ru/images/2024/09/16/13/20240916132144457/square_320_5d8429e21e1dc8d9a45113b5d83fee41.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": 0.14575564861297607,
+      "decision": "reject-domain",
+      "reason": "lenta.ru not on social allowlist",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 9,
+      "page_url": "https://www.sas.com/en_us/webinars/do-your-homework/_jcr_content/par/styledcontainer_53ad/par/styledcontainer/par/textimage/image.img.jpg/1595858261059.jpg",
+      "image_url": "https://www.sas.com/en_us/webinars/do-your-homework/_jcr_content/par/styledcontainer_53ad/par/styledcontainer/par/textimage/image.img.jpg/1595858261059.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": 0.05461840331554413,
+      "decision": "reject-domain",
+      "reason": "sas.com not on social allowlist",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 10,
+      "page_url": "https://cdn.prod.website-files.com/60f9b5aacdb4293fafd193cc/6232275e0ec3d615f97176eb_Chico%20Colvard.jpg",
+      "image_url": "https://cdn.prod.website-files.com/60f9b5aacdb4293fafd193cc/6232275e0ec3d615f97176eb_Chico%20Colvard.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-no-face",
+      "reason": "no face detected in candidate image",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 11,
+      "page_url": "https://www.kis.nl/sites/default/files/styles/profile_picture/public/2024-09/Mellouki-2021-webkis.jpg?itok=Cnf8XfVo",
+      "image_url": "https://www.kis.nl/sites/default/files/styles/profile_picture/public/2024-09/Mellouki-2021-webkis.jpg?itok=Cnf8XfVo",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": 0.07455690950155258,
+      "decision": "reject-domain",
+      "reason": "kis.nl not on social allowlist",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 12,
+      "page_url": "https://americanstudies.nd.edu/assets/279903/500x600/korey_garibaldi_photo_2.jpg",
+      "image_url": "https://americanstudies.nd.edu/assets/279903/500x600/korey_garibaldi_photo_2.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": -0.035203058272600174,
+      "decision": "reject-domain",
+      "reason": "nd.edu not on social allowlist",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 13,
+      "page_url": "https://oxfordliteraryfestival.org/images/author/3145/josephcoelho__main.gif",
+      "image_url": "https://oxfordliteraryfestival.org/images/author/3145/josephcoelho__main.gif",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": -0.02232009544968605,
+      "decision": "reject-domain",
+      "reason": "oxfordliteraryfestival.org not on social allowlist",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 14,
+      "page_url": "https://api.isr.umich.edu/wp-content/uploads/2020/06/Screen-Shot-2022-11-04-at-11.45.57-AM-e1686854998990.png",
+      "image_url": "https://api.isr.umich.edu/wp-content/uploads/2020/06/Screen-Shot-2022-11-04-at-11.45.57-AM-e1686854998990.png",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": 0.04491595923900604,
+      "decision": "reject-domain",
+      "reason": "umich.edu not on social allowlist",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 15,
+      "page_url": "https://i1.rgstatic.net/ii/profile.image/278673224683525-1443452282478_Q512/Timothy-Mcnellis.jpg",
+      "image_url": "https://i1.rgstatic.net/ii/profile.image/278673224683525-1443452282478_Q512/Timothy-Mcnellis.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": 0.016067933291196823,
+      "decision": "reject-domain",
+      "reason": "rgstatic.net not on social allowlist",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 16,
+      "page_url": "https://image.adsoftheworld.com/8t370r9aufl56yyqqbiyf29i5xj8",
+      "image_url": "https://image.adsoftheworld.com/8t370r9aufl56yyqqbiyf29i5xj8",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": 0.08153475821018219,
+      "decision": "reject-domain",
+      "reason": "adsoftheworld.com not on social allowlist",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 17,
+      "page_url": "https://pbs.twimg.com/profile_images/1894851487471198209/yqw3itBa_400x400.jpg",
+      "image_url": "https://pbs.twimg.com/profile_images/1894851487471198209/yqw3itBa.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": -0.027928251773118973,
+      "decision": "reject-below-threshold",
+      "reason": "score -0.0279 < threshold 0.42",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 18,
+      "page_url": "https://www.youtube.com/watch?v=DJi0xhkb5pI",
+      "image_url": "https://i.ytimg.com/vi/DJi0xhkb5pI/hqdefault.jpg?sqp=-oaymwEmCOADEOgC8quKqQMa8AEB-AHOBYACgAqKAgwIABABGGUgTCg6MA8=&rs=AOn4CLDxr7EuDQwIxGlKxW_j8m4I_pzWLA",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": -0.05221820995211601,
+      "decision": "reject-below-threshold",
+      "reason": "score -0.0522 < threshold 0.42",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 19,
+      "page_url": "https://cdn.bsky.app/img/feed_thumbnail/plain/did:plc:tttcydrb5xwccirgjgixavah/bafkreig34zfmsbwo2j7genucqmjfiglwgsyihwkxizc2lvnrcvnuhwzsdm",
+      "image_url": "https://cdn.bsky.app/img/feed_thumbnail/plain/did:plc:tttcydrb5xwccirgjgixavah/bafkreig34zfmsbwo2j7genucqmjfiglwgsyihwkxizc2lvnrcvnuhwzsdm",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-no-face",
+      "reason": "no face detected in candidate image",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 20,
+      "page_url": "https://media.licdn.com/dms/image/v2/C4E03AQHfR5UswQvdeg/profile-displayphoto-shrink_400_400/profile-displayphoto-shrink_400_400/0/1568189790523?e=2147483647&v=beta&t=oN8BfwGemlyqTzP-pyFZ2KtSEsebvcoqWQsJFS3KP-Q",
+      "image_url": "https://media.licdn.com/dms/image/v2/C4E03AQHfR5UswQvdeg/profile-displayphoto-shrink_400_400/profile-displayphoto-shrink_400_400/0/1568189790523?e=2147483647&v=beta&t=oN8BfwGemlyqTzP-pyFZ2KtSEsebvcoqWQsJFS3KP-Q",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": -0.024236509576439857,
+      "decision": "reject-below-threshold",
+      "reason": "score -0.0242 < threshold 0.42",
+      "match_kind": "similar"
+    }
+  ],
+  "verdict": "NO_MATCH",
+  "threshold": 0.42,
+  "margin_required": 0.08,
+  "cache": {
+    "web_detect": {
+      "hits": 0,
+      "misses": 22
+    },
+    "aggregate": {
+      "hits": 0,
+      "misses": 22
+    }
+  },
+  "identity_signals": [
+    "Jheri curl"
+  ],
+  "degraded_closed_corpus": false
+}

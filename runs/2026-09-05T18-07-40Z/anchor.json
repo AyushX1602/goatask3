@@ -1,0 +1,8 @@
+{
+  "tx_hash": "0x0cf1cc99973cc51d80a2aaed865b353a648d5fe478c562b506e8812b71de82f2",
+  "chain_id": 31337,
+  "block_number": 30,
+  "contract_address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+  "gas_used": 120348,
+  "evidence_hash": "0xa4a6bd6319cac0c1f098570bea5cfbb6dcdb51f94a310658a64e038430f85fd6"
+}

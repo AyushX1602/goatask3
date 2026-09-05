@@ -4,22 +4,22 @@ Living state file. Read this first when resuming work.
 
 `phases.md` is the plan. **This is the state.** Update it at every phase boundary and whenever an assumption gets verified or a decision gets made.
 
-**Last updated:** 5 September 2026 — Tier 1 ~two-thirds done (verdicts, GitHub allowlist, match_kind, consent quarantine); re-fetch check + headline selection remain
-**Current phase:** G-SERIES (see `phases.md`). F1–F9 complete, G1 complete, G1.1 complete, Tier 0 complete, Tier 1 partial.
-**Overall:** **All three brief requirements are met and observed live against the real running Anvil chain, and against a genuine non-celebrity face-only match (not a public figure — the strongest anti-hardcode evidence gathered so far).** 167 Python tests + 8 Foundry tests passing.
+**Last updated:** 6 September 2026 — README + 2 sample runs committed (G2/G3 done); submission-ready modulo recording
+**Current phase:** G-SERIES (see `phases.md`). F1–F9 complete, G1/G1.1 complete, Tier 0 complete, Tier 1.2 complete, G2/G3 complete.
+**Overall:** **All three brief requirements are met and observed live against the real running Anvil chain, including a fresh anchor->verify->tamper->restore cycle on a current-schema sample run**, and against a genuine non-celebrity face-only match found earlier in the session (the strongest anti-hardcode evidence gathered — no identity string for GCV to have leaked). 186 Python tests + 8 Foundry tests passing.
 
-> **Read §3f–3o at the bottom of this file first** — they carry the current
-> state. Sections 1–3e above are historical and describe a plan that has since
-> been superseded four times (D-25..D-33 scope reset, then the G-series, then
-> Tier 0, then Tier 1). In particular: the blockchain phase is no longer
-> "stopped", `media_urls.py` now handles two twimg schemes plus GitHub
-> derivation, schema is v2, `github.com` is now on the allowlist under a
-> written principle (R-06), the matcher has 4 verdicts not 2, and the biggest
-> open items are the repo still has **no root `README.md`** (required by the
-> brief), a small remainder of Tier 1 (re-fetch check, headline selection),
-> and **two sensitive test runs sit redacted in `calibration/quarantine/`
-> (gitignored) and must never be committed, referenced, or recorded with —
-> see §3m for why.**
+> **Read §3f–3r at the bottom of this file first** — they carry the current
+> state. Sections 1–3e above are historical. The repo now has a root
+> `README.md` and two committed sample runs (`runs/2026-09-05T18-07-40Z`
+> MATCH, `runs/2026-09-05T18-19-36Z` NO_MATCH). Remaining open items: T1.1
+> (Meta/TikTok wall re-probe, blocked on a policy question), T1.3 (resolver
+> module, blocked on a truncated spec), G4 (optional UI anchor/verify
+> buttons), G6 (recording). **Two sensitive test runs plus two image files
+> were found and handled this session (§3m, §3p) — `calibration/quarantine/`
+> (gitignored) holds redacted calibration data only; the raw image files
+> were deleted outright, never committed. If you find another ambiguous
+> local image file in this repo, treat it as untrustworthy by default — see
+> §3p before using it for anything.**
 
 ---
 
@@ -892,3 +892,96 @@ synthetic-avatar NO_MATCH-is-correct framing), G3 (sample runs — from the NEW
 deliberate test set, never from `calibration/quarantine/`), G4 (tamper
 endpoint + UI anchor/verify buttons), G6 (recording, preceded by running the
 deliberate test set under `HTTP_CACHE=0`). G5 stays skipped.
+
+---
+
+## 3p. Second and third consent incidents — two local image files, caught before commit
+
+6 Sep 2026. While hunting for a `NO_MATCH` sample-run image, two untracked
+files sitting in the repo root turned out to be real photos of the two
+private individuals already known from earlier incidents in this session
+(§3m):
+
+- `random.png` — confirmed by the owner to be "a random user from X" — the
+  same subject whose GitHub-derived match (score 0.9363) drove the R-06
+  allowlist principle earlier in this session.
+- `Screenshot 2026-09-05 194031.png` — a screenshot of `@silennai`'s X
+  profile, the identical subject.
+
+Both were deleted immediately on discovery. Neither was ever tracked by git
+(`git status --short` showed nothing for either path before deletion), so no
+history rewrite was needed — they existed only in the local working tree,
+never reached a commit.
+
+This is the **third and fourth** time this individual's face/identity ended
+up somewhere it should not have during this project (after the two
+quarantined `runs/` directories in §3m). Treating it as a pattern rather
+than an isolated slip: going forward, no image is used as a probe or test
+input unless it is (a) an existing vetted `tests/fixtures/` file, (b) a
+clearly-labelled public figure like `srk.jpg`, or (c) something the owner
+has explicitly confirmed is synthetic or consented. Ambiguous local image
+files (unlabelled screenshots, `random.*` names) are treated as
+untrustworthy by default rather than inspected-then-maybe-used.
+
+## 3q. G2/G3 complete — README written, two sample runs committed
+
+6 Sep 2026. Both closed together since the README cites the exact sample
+runs and their measured numbers.
+
+**Sample run selection, and why each was chosen:**
+
+- **MATCH — `runs/2026-09-05T18-07-40Z`.** Re-ran the SRK (Shah Rukh Khan,
+  public figure) probe fresh against the current code (the previous SRK
+  runs in `runs/` predated the Tier 0/Tier 1.2 commits and were missing
+  `match_kind`/`metadata_source`/derived `verified_against`, so they were
+  not representative of what the pipeline now actually produces — confirmed
+  by grepping the stale run's `evidence.json` and finding `match_kind`
+  absent). Score 0.9806, X/Twitter media URL, `match_kind: "partial"`,
+  `verified_against: "platform_origin"` (correctly NOT `search_engine_cache`
+  — `pbs.twimg.com` is not a Google-cache host). `match_image.jpg` (122KB,
+  real fetched bytes) saved alongside per the T0.2 fix.
+- **NO_MATCH — `runs/2026-09-05T18-19-36Z`.** Probed with
+  `tests/fixtures/alex_lacamoire.png` (an existing, already-vetted test
+  fixture — Alex Lacamoire, Hamilton's real musical director, a named
+  public figure with a much smaller indexed footprint than a movie star).
+  21 real GCV candidates examined, every score below 0.15, verdict
+  correctly `NO_MATCH`, not degraded (a real open-web search, not the
+  Bluesky fallback). This is a stronger `NO_MATCH` sample than a synthetic
+  face would have been, since it demonstrates the pipeline correctly
+  declining to force a match even for a real, searchable person whose
+  online presence is thin — exactly the R-16 property the brief cares about.
+
+**Live proof captured in the README, not just described:** ran the full
+anchor -> verify(PASS) -> tamper one byte -> verify(TAMPERED, exit 1) ->
+restore -> verify(PASS, exit 0) cycle against the MATCH sample run, on the
+live Anvil chain, and the README quotes the real tx hash
+(`0x0cf1cc99...`), block number (30), and both evidence hashes verbatim.
+
+**README covers:** what it does (6-stage pipeline), why Anvil not a public
+testnet, full run instructions incl. zero-key quickstart, the live
+anchor/verify/tamper transcript, both sample runs described with their real
+numbers, platform reach (including the X/GitHub dual-CDN-scheme finding and
+the Meta/TikTok wall), profiles-vs-posts, the synthetic-avatar NO_MATCH
+behaviour, a full privacy/consent section that explicitly documents the
+quarantined runs and why (rather than pretending they never happened), and
+the complete limitations list carried over from `prd.md` §10, updated with
+the live-measured negative ceiling and the disclosed false negative.
+
+**`runs/` cleaned** — every scratch/test run generated during this session
+(dozens, from probing GCV/Bluesky fallback behaviour) deleted, leaving only
+the two curated sample runs. Confirmed via `git status` that nothing else
+under `runs/` was ever tracked, so this was a pure working-tree cleanup.
+
+## 3r. Current state — what remains (supersedes §3o)
+
+**Done:** F1–F9, G1, G1.1, Tier 0 (complete), Tier 1.2 (complete), G2
+(README), G3 (sample runs). All three brief requirements met and observed
+live, including a real anchor->verify->tamper->restore cycle on a
+freshly-generated, fully-current-schema sample run. **186 tests passing.**
+
+**Remaining:** T1.1 (Meta/TikTok wall re-probe — still blocked on the
+measurement-only vs. adopt-as-production question), T1.3 (resolver module —
+blocked on a truncated spec), G4 (tamper endpoint + UI anchor/verify
+buttons, optional), G6 (recording, preceded by running a deliberate
+consenting test set under `HTTP_CACHE=0` — not the random-X-avatar
+methodology, per §3o/§3p). G5 (calibration) stays skipped per D-29.

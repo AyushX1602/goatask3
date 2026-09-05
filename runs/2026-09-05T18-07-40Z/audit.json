@@ -1,0 +1,535 @@
+{
+  "run_id": "2026-09-05T18-07-40Z",
+  "started_at": 1788631660.1500041,
+  "liveness": {
+    "passed": true,
+    "score": null,
+    "label": "not_applicable"
+  },
+  "providers": [
+    {
+      "name": "web_detect",
+      "available": true,
+      "attempted": true,
+      "latency_ms": 1.8748000147752464,
+      "candidates_returned": 50,
+      "error": null
+    }
+  ],
+  "candidates": [
+    {
+      "rank": 0,
+      "page_url": "https://www.instagram.com/reel/DQ4ZQRliTKh/?hl=en",
+      "image_url": "https://lookaside.instagram.com/seo/google_widget/crawler/?media_id=3970190280580821869",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-platform-blocked",
+      "reason": "Instagram serves media only to its own crawler, so the face cannot be independently verified \u2014 post found but unverifiable",
+      "match_kind": "partial"
+    },
+    {
+      "rank": 1,
+      "page_url": "https://www.facebook.com/TouchingHeartsByGenmice/posts/before-becoming-bollywood-superstar-shah-rukh-khan-his-journey-was-full-of-surpr/964981515898456/",
+      "image_url": "https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=1565389287365272",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-platform-blocked",
+      "reason": "Meta serves media only to its own crawler, so the face cannot be independently verified \u2014 post found but unverifiable",
+      "match_kind": "partial"
+    },
+    {
+      "rank": 2,
+      "page_url": "https://www.instagram.com/reel/DB1r8z8tPqJ/?hl=en",
+      "image_url": "https://lookaside.instagram.com/seo/google_widget/crawler/?media_id=3956997547084334792",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-platform-blocked",
+      "reason": "Instagram serves media only to its own crawler, so the face cannot be independently verified \u2014 post found but unverifiable",
+      "match_kind": "partial"
+    },
+    {
+      "rank": 3,
+      "page_url": "https://lookaside.instagram.com/seo/google_widget/crawler/?media_id=3969431115537879973",
+      "image_url": "https://lookaside.instagram.com/seo/google_widget/crawler/?media_id=3969431115537879973",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-platform-blocked",
+      "reason": "Instagram serves media only to its own crawler, so the face cannot be independently verified \u2014 post found but unverifiable",
+      "match_kind": "partial"
+    },
+    {
+      "rank": 4,
+      "page_url": "https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=100015150289274",
+      "image_url": "https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=100015150289274",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-platform-blocked",
+      "reason": "Meta serves media only to its own crawler, so the face cannot be independently verified \u2014 post found but unverifiable",
+      "match_kind": "partial"
+    },
+    {
+      "rank": 5,
+      "page_url": "https://lookaside.fbsbx.com/lookaside/crawler/instagram/DWZX3C4jzcI/0/image.jpg",
+      "image_url": "https://lookaside.fbsbx.com/lookaside/crawler/instagram/DWZX3C4jzcI/0/image.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-platform-blocked",
+      "reason": "Meta serves media only to its own crawler, so the face cannot be independently verified \u2014 post found but unverifiable",
+      "match_kind": "partial"
+    },
+    {
+      "rank": 6,
+      "page_url": "https://lookaside.fbsbx.com/lookaside/crawler/threads/Dclb-cxk9J4/0/image.jpg",
+      "image_url": "https://lookaside.fbsbx.com/lookaside/crawler/threads/Dclb-cxk9J4/0/image.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-platform-blocked",
+      "reason": "Meta serves media only to its own crawler, so the face cannot be independently verified \u2014 post found but unverifiable",
+      "match_kind": "partial"
+    },
+    {
+      "rank": 7,
+      "page_url": "https://www.tiktok.com/api/img/?itemId=7677279385375853856&location=3&aid=1988&index=10",
+      "image_url": "https://www.tiktok.com/api/img/?itemId=7677279385375853856&location=3&aid=1988&index=10",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-platform-blocked",
+      "reason": "TikTok serves media only to its own crawler, so the face cannot be independently verified \u2014 post found but unverifiable",
+      "match_kind": "partial"
+    },
+    {
+      "rank": 8,
+      "page_url": "https://lookaside.instagram.com/seo/google_widget/crawler/?media_id=3971285235316260694",
+      "image_url": "https://lookaside.instagram.com/seo/google_widget/crawler/?media_id=3971285235316260694",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-platform-blocked",
+      "reason": "Instagram serves media only to its own crawler, so the face cannot be independently verified \u2014 post found but unverifiable",
+      "match_kind": "partial"
+    },
+    {
+      "rank": 9,
+      "page_url": "https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=1410736510988704&get_thumbnail=1",
+      "image_url": "https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=1410736510988704&get_thumbnail=1",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-platform-blocked",
+      "reason": "Meta serves media only to its own crawler, so the face cannot be independently verified \u2014 post found but unverifiable",
+      "match_kind": "partial"
+    },
+    {
+      "rank": 10,
+      "page_url": "https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=100044404210477",
+      "image_url": "https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=100044404210477",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-platform-blocked",
+      "reason": "Meta serves media only to its own crawler, so the face cannot be independently verified \u2014 post found but unverifiable",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 11,
+      "page_url": "https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=1037433885588990&get_thumbnail=1",
+      "image_url": "https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=1037433885588990&get_thumbnail=1",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-platform-blocked",
+      "reason": "Meta serves media only to its own crawler, so the face cannot be independently verified \u2014 post found but unverifiable",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 12,
+      "page_url": "https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=1033154902872013&get_thumbnail=1",
+      "image_url": "https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=1033154902872013&get_thumbnail=1",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-platform-blocked",
+      "reason": "Meta serves media only to its own crawler, so the face cannot be independently verified \u2014 post found but unverifiable",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 13,
+      "page_url": "https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=100009278271533",
+      "image_url": "https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=100009278271533",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-platform-blocked",
+      "reason": "Meta serves media only to its own crawler, so the face cannot be independently verified \u2014 post found but unverifiable",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 14,
+      "page_url": "https://lookaside.fbsbx.com/lookaside/crawler/instagram/ignacioachurra/profile_pic.jpg",
+      "image_url": "https://lookaside.fbsbx.com/lookaside/crawler/instagram/ignacioachurra/profile_pic.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-platform-blocked",
+      "reason": "Meta serves media only to its own crawler, so the face cannot be independently verified \u2014 post found but unverifiable",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 15,
+      "page_url": "https://www.ashoka.edu.in/wp-content/uploads/2024/09/Profile-400-%C3%97-411-px-1.png",
+      "image_url": "https://www.ashoka.edu.in/wp-content/uploads/2024/09/Profile-400-%C3%97-411-px-1.png",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-fetch-failed",
+      "reason": "could not fetch https://www.ashoka.edu.in/wp-content/uploads/2024/09/Profile-400-%C3%97-411-px-1.png",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 16,
+      "page_url": "https://www.tvinsider.com/people/shah-rukh-khan/",
+      "image_url": "https://ntvb.tmsimg.com/assets/assets/170054_v9_bc.jpg?w=270&h=360",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": 0.9639446139335632,
+      "decision": "reject-domain",
+      "reason": "tvinsider.com not on social allowlist",
+      "match_kind": "partial"
+    },
+    {
+      "rank": 17,
+      "page_url": "https://www.bollywoodhungama.com/news/features/did-you-know-shah-rukh-khan-once-served-samosas-at-nsd-canteen-pankaj-kapur-recalls-heartwarming-childhood-memory/",
+      "image_url": "https://www.bollywoodhungama.com/wp-content/uploads/2026/06/Did-You-Know-Shah-Rukh-Khan-once-served-samosas-at-NSD-canteen-Pankaj-Kapur-news.jpeg",
+      "source": "gcv_web_detection",
+      "faces_found": 2,
+      "score": 0.9651789665222168,
+      "decision": "reject-domain",
+      "reason": "bollywoodhungama.com not on social allowlist",
+      "match_kind": "partial"
+    },
+    {
+      "rank": 18,
+      "page_url": "https://www.youtube.com/watch?v=e2uRUMgozFQ",
+      "image_url": "https://i.ytimg.com/vi/e2uRUMgozFQ/sddefault.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 2,
+      "score": 0.6037254333496094,
+      "decision": "corroborating",
+      "reason": "score 0.6037 >= threshold 0.42; same identity, not the top-ranked result",
+      "match_kind": "page"
+    },
+    {
+      "rank": 19,
+      "page_url": "https://www.etnownews.com/et-now-luxe/shah-rukh-khan-abhishek-bachchan-ranbir-kapoor-to-alia-bhatt-7-actors-who-turned-bollywood-fame-into-business-success-article-155396691",
+      "image_url": "https://images.etnownews.com/thumb/msid-155396691,updatedat-1787994319692,width-1280,height-720,resizemode-75/155396691.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 4,
+      "score": 0.9781907796859741,
+      "decision": "reject-domain",
+      "reason": "etnownews.com not on social allowlist",
+      "match_kind": "partial"
+    },
+    {
+      "rank": 20,
+      "page_url": "https://www.youtube.com/shorts/V8UwSQAPDxs",
+      "image_url": "https://i.ytimg.com/vi/V8UwSQAPDxs/maxresdefault.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": 0.27952176332473755,
+      "decision": "reject-below-threshold",
+      "reason": "score 0.2795 < threshold 0.42",
+      "match_kind": "page"
+    },
+    {
+      "rank": 21,
+      "page_url": "https://www.youtube.com/watch?v=Ld31hSzk0U4",
+      "image_url": "https://i.ytimg.com/vi/Ld31hSzk0U4/maxresdefault.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": 0.639180064201355,
+      "decision": "corroborating",
+      "reason": "score 0.6392 >= threshold 0.42; same identity, not the top-ranked result",
+      "match_kind": "page"
+    },
+    {
+      "rank": 22,
+      "page_url": "https://www.youtube.com/watch?v=cx1Nmx8xywE",
+      "image_url": "https://i.ytimg.com/vi/cx1Nmx8xywE/maxresdefault.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": 0.5213261246681213,
+      "decision": "corroborating",
+      "reason": "score 0.5213 >= threshold 0.42; same identity, not the top-ranked result",
+      "match_kind": "page"
+    },
+    {
+      "rank": 23,
+      "page_url": "https://www.ranker.com/list/main-hoon-na-cast-and-actors-in-this-movie/reference",
+      "image_url": "https://imgix.ranker.com/user_node_img/101/2010902/original/shahrukh-khan-u2070629252?fit=crop&fm=pjpg&q=80&dpr=2&w=600&h=600",
+      "source": "gcv_web_detection",
+      "faces_found": 0,
+      "score": null,
+      "decision": "reject-no-face",
+      "reason": "no face detected in candidate image",
+      "match_kind": "partial"
+    },
+    {
+      "rank": 24,
+      "page_url": "https://images.tv9marathi.com/wp-content/uploads/2026/09/king-khan.jpg?w=420&ar=16:9&q=51",
+      "image_url": "https://images.tv9marathi.com/wp-content/uploads/2026/09/king-khan.jpg?w=420&ar=16:9&q=51",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": 0.928026556968689,
+      "decision": "reject-domain",
+      "reason": "tv9marathi.com not on social allowlist",
+      "match_kind": "partial"
+    },
+    {
+      "rank": 25,
+      "page_url": "https://www.youtube.com/watch?v=nDj8MIyitUs",
+      "image_url": "https://i.ytimg.com/vi/nDj8MIyitUs/oardefault.jpg?sqp=-oaymwEYCJUDENAFSFqQAgHyq4qpAwcIARUAAIhC&rs=AOn4CLDFLfYVqehavYaeVIh9lsj-Qkp43A&usqp=CCk",
+      "source": "gcv_web_detection",
+      "faces_found": 2,
+      "score": 0.9617953300476074,
+      "decision": "corroborating",
+      "reason": "score 0.9618 >= threshold 0.42; same identity, not the top-ranked result",
+      "match_kind": "partial"
+    },
+    {
+      "rank": 26,
+      "page_url": "https://pbs.twimg.com/media/HRSsRstbMAEzQxl.jpg?format=jpg&name=thumb",
+      "image_url": "https://pbs.twimg.com/media/HRSsRstbMAEzQxl.jpg?format=jpg&name=orig",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": 0.980555534362793,
+      "decision": "ACCEPT",
+      "reason": "score 0.9806 >= threshold 0.42, margin 0.7010 >= 0.08 vs best non-match 0.2795, 7 corroborating match(es) above threshold",
+      "match_kind": "partial"
+    },
+    {
+      "rank": 27,
+      "page_url": "https://www.youtube.com/watch?v=T_XTJW9qBZI",
+      "image_url": "https://i.ytimg.com/vi/T_XTJW9qBZI/oar2.jpg?sqp=-oaymwEYCJUDENAFSFqQAgHyq4qpAwcIARUAAIhC&rs=AOn4CLByTUz30AC8RWPy0LRP3FaXh72TKA&usqp=CCk",
+      "source": "gcv_web_detection",
+      "faces_found": 2,
+      "score": 0.9257540702819824,
+      "decision": "corroborating",
+      "reason": "score 0.9258 >= threshold 0.42; same identity, not the top-ranked result",
+      "match_kind": "partial"
+    },
+    {
+      "rank": 28,
+      "page_url": "https://www.youtube.com/watch?v=En3uopzt9Ps",
+      "image_url": "https://i.ytimg.com/vi/En3uopzt9Ps/oar2.jpg?sqp=-oaymwEYCJUDENAFSFqQAgHyq4qpAwcIARUAAIhC&rs=AOn4CLDBJi3J-W60m8mnyAj_5B27LxIXcw&usqp=CCk",
+      "source": "gcv_web_detection",
+      "faces_found": 2,
+      "score": 0.9557088017463684,
+      "decision": "corroborating",
+      "reason": "score 0.9557 >= threshold 0.42; same identity, not the top-ranked result",
+      "match_kind": "partial"
+    },
+    {
+      "rank": 29,
+      "page_url": "https://www.youtube.com/watch?v=vLadp2lxwGM",
+      "image_url": "https://i.ytimg.com/vi/vLadp2lxwGM/frame0.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 2,
+      "score": 0.9195083975791931,
+      "decision": "corroborating",
+      "reason": "score 0.9195 >= threshold 0.42; same identity, not the top-ranked result",
+      "match_kind": "partial"
+    },
+    {
+      "rank": 30,
+      "page_url": "https://th-i.thgim.com/public/incoming/n02rb/article71418756.ece/alternates/FREE_1200/DSC_6068.JPG",
+      "image_url": "https://th-i.thgim.com/public/incoming/n02rb/article71418756.ece/alternates/FREE_1200/DSC_6068.JPG",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": -0.04419708251953125,
+      "decision": "reject-domain",
+      "reason": "thgim.com not on social allowlist",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 31,
+      "page_url": "https://akm-img-a-in.tosshub.com/indiatoday/images/story/202609/tamil-nadu-cm-c-joseph-vijay-244204244-3x4.jpeg?VersionId=nCQG6c55BBn5Jo2cNvbnz5v0r1lCx.KX",
+      "image_url": "https://akm-img-a-in.tosshub.com/indiatoday/images/story/202609/tamil-nadu-cm-c-joseph-vijay-244204244-3x4.jpeg?VersionId=nCQG6c55BBn5Jo2cNvbnz5v0r1lCx.KX",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": -0.03171210736036301,
+      "decision": "reject-domain",
+      "reason": "tosshub.com not on social allowlist",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 32,
+      "page_url": "https://media.licdn.com/dms/image/v2/D5603AQF9uxiOcn75fA/profile-displayphoto-shrink_400_400/B56ZTSyWaFHQAk-/0/1738703202247?e=2147483647&v=beta&t=37Bb3gbf6fAzBJg0tLE9MTgpv0sXf8INB9kd_xMiR80",
+      "image_url": "https://media.licdn.com/dms/image/v2/D5603AQF9uxiOcn75fA/profile-displayphoto-shrink_400_400/B56ZTSyWaFHQAk-/0/1738703202247?e=2147483647&v=beta&t=37Bb3gbf6fAzBJg0tLE9MTgpv0sXf8INB9kd_xMiR80",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": 0.11427289992570877,
+      "decision": "reject-below-threshold",
+      "reason": "score 0.1143 < threshold 0.42",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 33,
+      "page_url": "https://asiafoundation.org/wp-content/uploads/2024/06/Mir-Junayed-Jamal.jpg",
+      "image_url": "https://asiafoundation.org/wp-content/uploads/2024/06/Mir-Junayed-Jamal.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": 0.06405334174633026,
+      "decision": "reject-domain",
+      "reason": "asiafoundation.org not on social allowlist",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 34,
+      "page_url": "https://www.hindustantimes.com/ht-img/img/2026/09/03/440x330/ANI-20260815603-0_1788428700071_8fe2158f-ac15-4418-8901-d73518bc962d_1788428722446_76d8d762-7342-4dbc-a1c2-25630421d020_e1b06198-7ed3-4e81-83fc-7ccea9c356ff_6fd9ba62-77d8-4ab4-baa6-0d3a3cade05e.jpg",
+      "image_url": "https://www.hindustantimes.com/ht-img/img/2026/09/03/440x330/ANI-20260815603-0_1788428700071_8fe2158f-ac15-4418-8901-d73518bc962d_1788428722446_76d8d762-7342-4dbc-a1c2-25630421d020_e1b06198-7ed3-4e81-83fc-7ccea9c356ff_6fd9ba62-77d8-4ab4-baa6-0d3a3cade05e.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": 0.006022574380040169,
+      "decision": "reject-domain",
+      "reason": "hindustantimes.com not on social allowlist",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 35,
+      "page_url": "https://images.indianexpress.com/2026/07/Jana-Nayagan-Box-Office-Collection-Day-5-Updates-Vijay.jpg",
+      "image_url": "https://images.indianexpress.com/2026/07/Jana-Nayagan-Box-Office-Collection-Day-5-Updates-Vijay.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": -0.04091454669833183,
+      "decision": "reject-domain",
+      "reason": "indianexpress.com not on social allowlist",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 36,
+      "page_url": "https://c.saavncdn.com/artists/Tanishk_Bagchi_003_20260106115039_500x500.jpg",
+      "image_url": "https://c.saavncdn.com/artists/Tanishk_Bagchi_003_20260106115039_500x500.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": 0.012149561196565628,
+      "decision": "reject-domain",
+      "reason": "saavncdn.com not on social allowlist",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 37,
+      "page_url": "https://www.chicagobooth.edu/-/media/project/chicago-booth/faculty-and-insights/faculty/baris-ata/chicago-booth-baris-ata.jpg?cx=0.58&cy=0.31&cw=749&ch=940&hash=5C3C133C0DDDF7D3F8C73DD04FE6DB0A",
+      "image_url": "https://www.chicagobooth.edu/-/media/project/chicago-booth/faculty-and-insights/faculty/baris-ata/chicago-booth-baris-ata.jpg?cx=0.58&cy=0.31&cw=749&ch=940&hash=5C3C133C0DDDF7D3F8C73DD04FE6DB0A",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": 0.09725187718868256,
+      "decision": "reject-domain",
+      "reason": "chicagobooth.edu not on social allowlist",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 38,
+      "page_url": "https://www.lpu.in/schools/common-assets/images/animation-and-multimedia//placement/amit-ramgude.webp",
+      "image_url": "https://www.lpu.in/schools/common-assets/images/animation-and-multimedia//placement/amit-ramgude.webp",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": -0.027799945324659348,
+      "decision": "reject-domain",
+      "reason": "lpu.in not on social allowlist",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 39,
+      "page_url": "https://genesys-lab.org/sites/default/files/krc-new-pic.jpg",
+      "image_url": "https://genesys-lab.org/sites/default/files/krc-new-pic.jpg",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": 0.08113414794206619,
+      "decision": "reject-domain",
+      "reason": "genesys-lab.org not on social allowlist",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 40,
+      "page_url": "https://relx-elsevier-erms.file.force.com/servlet/servlet.ImageServer?id=015Sl00000Fd6cnIAB&oid=00D1t000000qIy5EAE&lastMod=1788194387196",
+      "image_url": "https://relx-elsevier-erms.file.force.com/servlet/servlet.ImageServer?id=015Sl00000Fd6cnIAB&oid=00D1t000000qIy5EAE&lastMod=1788194387196",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": -0.059651412069797516,
+      "decision": "reject-domain",
+      "reason": "force.com not on social allowlist",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 41,
+      "page_url": "https://www.lpu.in/schools/common-assets/images/computer-applications/placement/devansh.webp",
+      "image_url": "https://www.lpu.in/schools/common-assets/images/computer-applications/placement/devansh.webp",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": -0.07565832138061523,
+      "decision": "reject-domain",
+      "reason": "lpu.in not on social allowlist",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 42,
+      "page_url": "https://media.licdn.com/dms/image/v2/D5603AQFhOf_1c2XFtA/profile-displayphoto-shrink_400_400/profile-displayphoto-shrink_400_400/0/1676628294105?e=2147483647&v=beta&t=RH7g1YppsGCaQQw1X8rYzjU8iO5uUS3YY3G7GHB3548",
+      "image_url": "https://media.licdn.com/dms/image/v2/D5603AQFhOf_1c2XFtA/profile-displayphoto-shrink_400_400/profile-displayphoto-shrink_400_400/0/1676628294105?e=2147483647&v=beta&t=RH7g1YppsGCaQQw1X8rYzjU8iO5uUS3YY3G7GHB3548",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": 0.048576898872852325,
+      "decision": "reject-below-threshold",
+      "reason": "score 0.0486 < threshold 0.42",
+      "match_kind": "similar"
+    },
+    {
+      "rank": 43,
+      "page_url": "https://th-i.thgim.com/public/incoming/ocyfr6/article71402179.ece/alternates/LANDSCAPE_1200/_JAI9393.JPG",
+      "image_url": "https://th-i.thgim.com/public/incoming/ocyfr6/article71402179.ece/alternates/LANDSCAPE_1200/_JAI9393.JPG",
+      "source": "gcv_web_detection",
+      "faces_found": 1,
+      "score": 0.10432758927345276,
+      "decision": "reject-domain",
+      "reason": "thgim.com not on social allowlist",
+      "match_kind": "similar"
+    }
+  ],
+  "verdict": "MATCH",
+  "threshold": 0.42,
+  "margin_required": 0.08,
+  "cache": {
+    "web_detect": {
+      "hits": 49,
+      "misses": 3
+    },
+    "aggregate": {
+      "hits": 49,
+      "misses": 3
+    }
+  },
+  "identity_signals": [
+    "Shah Rukh Khan",
+    "Dilwale Dulhania Le Jayenge",
+    "Hindi cinema",
+    "Actor",
+    "famous",
+    "successful",
+    "Film director",
+    "future",
+    "Film producer",
+    "Kajol",
+    "Naseeruddin Shah",
+    "Veer-Zaara",
+    "Ramesh Sippy",
+    "Karan Arjun"
+  ],
+  "degraded_closed_corpus": false
+}
