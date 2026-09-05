@@ -55,7 +55,10 @@ face scan / upload  ->  web/social search  ->  local re-verification (ArcFace)
    hash from the bundle on disk and checks it against the on-chain record.
    Editing one character of an anchored bundle and re-running `verify`
    reports `TAMPERED` with a non-zero exit code — demonstrated live, see
-   below.
+   below. The demo UI exposes the same anchor/verify flow as buttons (see
+   "Anchor and verify from the UI"), plus a tamper button that mutates a
+   throw-away in-memory copy and re-verifies it — the real evidence.json on
+   disk is never touched.
 
 ## Why a local chain (Anvil), not a public testnet
 
@@ -126,6 +129,31 @@ those code paths are currently reachable only through the demo UI's
 `/api/scan`, `/api/upload`, and `/api/search/{run_id}` endpoints, which call
 the exact same `pipeline.*` functions the CLI would (`webapp/server.py`
 contains no duplicate scoring logic — see `architecture.md` §5a).
+
+### Anchor and verify from the UI
+
+After a `MATCH`, the UI shows a "3. Blockchain" panel with three buttons,
+calling `POST /api/anchor/{run_id}`, `/api/verify/{run_id}`, and
+`/api/tamper/{run_id}` — the same `pipeline.chain.*` functions the CLI
+commands above use, not a separate implementation. The tamper button never
+edits the real `evidence.json`: it mutates a scratch in-memory copy, writes
+it to a temp file, re-verifies that, and deletes the temp file — verified
+by test (`tests/test_anchor_verify_endpoints.py`) and live that the file on
+disk is byte-identical before and after.
+
+### Recall recovery: resolver cascade and real diagnostics
+
+When a candidate has no usable image URL (or every known size variant
+fails), `pipeline/verify/resolver.py` tries three keyless, credential-free
+routes before giving up: OpenGraph/Twitter Card meta tags on the candidate's
+page, YouTube/X's public oEmbed endpoints, and Reddit's `.json` suffix. No
+login, no scraper package, no crawler-UA impersonation. Every attempt is
+recorded, so a rejection can honestly say which routes were tried.
+
+Rows with no cosine score to show (no face was ever embedded) display real
+measured observations instead of a bare dash — HTTP status, content-type,
+byte count, image dimensions, faces detected, largest face size in pixels —
+never a fabricated confidence value.
 
 ## Verified live, end to end (this exact repo, this exact commit)
 
@@ -311,6 +339,23 @@ sample.
 ## Tests
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest tests/ -q      # 186 tests
+.\.venv\Scripts\python.exe -m pytest tests/ -q      # 224 tests
 cd contracts; forge test -vv                         # 8 tests, incl. a 256-run fuzz test
 ```
+
+## Before recording
+
+```powershell
+.\.venv\Scripts\python.exe scripts\warmup.py
+```
+
+Pre-loads every ONNX session (avoids a "loading model..." stall mid-take),
+and checks every precondition a judge would notice missing: models present,
+a search API key set, Anvil reachable, the contract deployed, the deployer
+funded, exactly the intended sample runs present under `runs/` with nothing
+stray left over from testing. Exits non-zero with the specific failing
+check printed if anything needs fixing. Deliberately flags `HTTP_CACHE=1`
+as a failure — that variable should stay `1` during development (so
+iterating doesn't burn API quota, R-04) and only be set to `0` right before
+the actual take, so the recorded run is provably live rather than replayed
+from cache (a judge can check this in `audit.json`'s `cache` block).

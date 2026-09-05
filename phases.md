@@ -236,6 +236,15 @@ gotten to them. See `memory.md` §3m for the full narrative.
 
 All items verified live against the real running Anvil chain and demo server, not just unit tests. 224 tests passing, pyflakes clean.
 
+### G6 prep — everything buildable without a camera, done 6 Sep 2026
+
+| # | Item | Status | Notes |
+|---|---|---|---|
+| — | `scripts/warmup.py` | ✅ DONE | Pre-loads all 3 ONNX sessions, runs one real inference to absorb JIT warmup, checks: models present, search key set, `HTTP_CACHE` state, Anvil reachable, contract deployed, deployer funded, exactly the intended sample runs present with no stray scratch runs. Exit 0 only if every check passes. Run live: caught real stray-run clutter and correctly flagged `HTTP_CACHE=1` |
+| — | `docs/recording-beat-sheet.md` | ✅ DONE | Beat-by-beat script: consenting teammate -> public figure -> synthetic face, in that order, per the methodology decided in §3o/§3p. Explicit "what NOT to do" section (no `HTTP_CACHE=1`, no non-consenting subjects, no misrepresenting `corroborating`/`match_kind`) |
+| — | README updated | ✅ DONE | Test count corrected (224), new sections for the UI anchor/verify/tamper buttons and the resolver cascade/diagnostics, "Before recording" section pointing at `warmup.py` |
+| G6 | Actual recording | ⬜ NOT STARTED — requires a camera and a consenting human, neither of which this session can supply |
+
 **Test methodology change (owner-approved):** stop sampling random X avatars
 for testing — they are disproportionately synthetic, stolen, or of people
 with zero footprint, and a genuine positive found this way can never be

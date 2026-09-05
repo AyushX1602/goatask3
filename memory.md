@@ -1136,3 +1136,62 @@ never random sampling. G5 (calibration) stays skipped per D-29.
 **Before recording:** re-run `scripts/probe_meta_wall.py` is a point-in-time
 measurement — platforms can change behaviour, so if the recording is more
 than a few days out, consider re-running it once more beforehand.
+
+---
+
+## 3u. G6 prep — the recording-adjacent work that doesn't need a camera
+
+6 Sep 2026. Continuing "whats left" after §3s. G6 itself (the actual
+screen recording) needs a human and a camera, neither of which this
+session can supply — but everything that precedes it does not.
+
+**`scripts/warmup.py` (new).** Pre-loads all three ONNX sessions (face
+detector, embedder, liveness) and runs one real detect->align->embed pass
+on a fixture so the first-call JIT/graph-compile cost (measured up to
+~700ms for the embedder alone) happens before recording, not during it.
+Then checks every precondition that would otherwise be discovered mid-take:
+models present, a search API key configured, `HTTP_CACHE` state (fails
+loudly on `HTTP_CACHE=1`, which is correct — the reminder is deliberate,
+since dev work should keep the cache on to protect quota, and only the
+actual take needs it off), Anvil reachable and returning `chain_id=31337`,
+the contract deployed and responding to a real `verify()` call, the
+deployer account funded, and — running it live immediately caught this —
+that `runs/` contains exactly the intended committed sample runs with no
+leftover scratch runs from testing. Exit code 0 only if every check passes.
+
+Running it surfaced two real stray runs left over from the live
+verification in §3s (`2026-09-05T21-21-29Z`, `2026-09-05T21-23-32Z`) that
+had not been cleaned up — confirmed untracked via `git status`, deleted.
+This is now a repeatable check rather than something that has to be
+remembered by hand each time.
+
+**`docs/recording-beat-sheet.md` (new).** A concrete, beat-by-beat script
+built directly on the methodology decided in §3o/§3p: consenting teammate
+first (strongest genuineness proof — no public identity string for GCV to
+leak), public figure second (satisfies the brief's literal "post" wording,
+shows multi-platform corroboration), synthetic/AI face third (a designed,
+publishable `NO_MATCH`). Explicit "what NOT to do" section: no
+`HTTP_CACHE=1` for the actual take, no non-consenting subject even if one
+turns up as a dramatic false positive during rehearsal, no claiming `LIVE`
+for an upload, no narrating a `corroborating` row as a rejection or a
+`match_kind` value as part of the accept decision.
+
+**README updated** to match current reality: test count corrected 186 ->
+224, new sections documenting the UI's anchor/verify/tamper buttons and the
+resolver-cascade/real-diagnostics behaviour (both landed in §3s, after the
+README was first written), and a new "Before recording" section pointing
+at `warmup.py`.
+
+## 3v. Current state — what remains (supersedes §3t)
+
+**Done:** everything through §3s, plus `scripts/warmup.py`,
+`docs/recording-beat-sheet.md`, and a refreshed README. 224 tests passing,
+pyflakes clean, working tree clean (verified via `git status` after
+deleting the stray runs `warmup.py` flagged).
+
+**Remaining:** only the actual G6 recording itself — this requires a human
+subject who has consented, a camera, and someone pressing record. Nothing
+further can be prepared without one of those three. The re-fetch verifier
+check (stale-image detection, distinct from the missing-image problem the
+resolver cascade solves) remains deprioritised and optional. G5
+(calibration) stays skipped per D-29.
