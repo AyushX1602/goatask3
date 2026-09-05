@@ -23,20 +23,19 @@ This document covers structure: components, boundaries, data flow, and stack dec
 │ face      │               │ search + verify   │            │ evidence + chain │
 └─────┬─────┘               └─────────┬─────────┘            └────────┬─────────┘
       │                               │                               │
-      │ liveness.py                   │ search/base.py (ABC)          │ evidence/
-      │ detect.py    (YuNet)          │  ├─ bluesky.py      no key    │  canonical.py
-      │ align.py     (5-pt affine)    │  ├─ google_lens.py  SerpApi   │  bundle.py
-      │ embed.py     (ArcFace 512-d)  │  ├─ bing_visual.py  Azure     │  ipfs.py
-      │                               │  ├─ mastodon.py     no key    │
-      │                               │  ├─ facecheck.py    opt-in    │ chain/
-      │                               │  └─ search4faces.py opt-in    │  evm.py
-      │                               │                               │  ots.py
-      │                               │ verify/                       │  reverify.py
-      │                               │  ├─ dedupe.py   (phash)       │
-      │                               │  ├─ allowlist.py              │ contracts/
-      │                               │  ├─ matcher.py  (cosine)      │  FaceEvidence
-      │                               │  └─ calibrate.py (ROC)        │  Registry.sol
-      │                               │                               │
+      │ liveness.py  (3-state)        │ search/base.py (ABC)          │ evidence/
+      │ detect.py    (YuNet)          │  ├─ web_detect.py  PRIMARY    │  canonical.py
+      │ align.py     (5-pt affine)    │  │    ├ serpapi  Lens         │  bundle.py
+      │ embed.py     (ArcFace 512-d)  │  │    └ gcv      WEB_DETECTION│  ipfs.py
+      │ quality.py   (size gate)      │  └─ bluesky.py   keyless      │
+      │                               │       fallback, closed corpus │ chain/
+      │                               │                               │  evm.py
+      │                               │ verify/                       │  ots.py
+      │                               │  ├─ dedupe.py   (phash)       │  reverify.py
+      │                               │  ├─ allowlist.py              │
+      │                               │  ├─ matcher.py  (cosine)      │ contracts/
+      │                               │  └─ calibrate.py (ROC)        │  FaceEvidence
+      │                               │                               │  Registry.sol
       └───────────────┬───────────────┴───────────────┬───────────────┘
                       │                               │
                       ▼                               ▼
@@ -55,46 +54,58 @@ Two cross-cutting concerns deliberately sit outside the three stages:
 ## 2. Data flow
 
 ```
-webcam frame (BGR ndarray)
-   └─ liveness.py ──────────────► LivenessResult{passed, score}
-   └─ detect.py ────────────────► [DetectedFace{bbox, kps5, det_score}]
+INPUT (two first-class modes — D-19)
+   webcam frame ──► liveness.py ──► LivenessResult{LIVE | SPOOF}
+   uploaded file ─► liveness SKIPPED ──► LivenessResult{N/A, unverified}
+        │
+        ▼
+   detect.py  (YuNet) ──────────► [DetectedFace{bbox, kps5, det_score}]
+        │
+        ├─ quality.py gate: reject faces < MIN_FACE_PX  (derived, see §2a)
+        │
         └─ align.py ────────────► aligned 112×112 BGR crop
-             └─ embed.py ───────► Embedding{vec(512,), l2_normalised=True}
+             └─ embed.py ───────► Embedding{vec(512,), L2-normalised}
                                         │
                                         │  probe
                                         ▼
-                             ┌──────────────────────┐
-                             │ SearchOrchestrator   │
-                             │ parallel fan-out     │
-                             └──────────┬───────────┘
-                                        │
-              ┌─────────────┬───────────┴──────┬─────────────┐
-              ▼             ▼                  ▼             ▼
-        BlueskyProvider  LensProvider   BingProvider   MastodonProvider
-              │             │                  │             │
-              └─────────────┴───────┬──────────┴─────────────┘
-                                    │  list[Candidate]
-                                    ▼
-                          dedupe.py  (perceptual hash)
-                                    │
-                                    ▼
-                    download each candidate image (cached)
-                                    │
-                                    ▼
-                    ┌─────────────────────────────────┐
-                    │ SAME face core, re-applied      │
-                    │ detect → align → embed          │
-                    └────────────────┬────────────────┘
-                                     │
-                                     ▼
+                    ┌───────────────────────────────────────┐
+                    │  WebDetectProvider        PRIMARY     │
+                    │  one call -> ALL platforms Google      │
+                    │  has indexed (proven: instagram,      │
+                    │  facebook, youtube, x, reddit)        │
+                    │    backend A: SerpApi google_lens     │
+                    │    backend B: GCV WEB_DETECTION       │
+                    └──────────────────┬────────────────────┘
+                                       │
+                    ┌──────────────────┴────────────────────┐
+                    │  BlueskyProvider   keyless FALLBACK   │
+                    │  closed corpus, labelled as such      │
+                    └──────────────────┬────────────────────┘
+                                       │  list[Candidate]
+                                       ▼
+                             dedupe.py  (perceptual hash)
+                                       │
+                                       ▼
+                       allowlist.py  social-domain filter
+                                       │
+                                       ▼
+                       download each candidate image (cached)
+                                       │
+                                       ▼
+                    ┌──────────────────────────────────────┐
+                    │ SAME face core, re-applied           │
+                    │ detect → quality gate → align → embed│
+                    │ score ALL faces per image, take max  │
+                    └──────────────────┬───────────────────┘
+                                       │
+                                       ▼
                           matcher.py  cosine vs probe
                           threshold + margin rule
-                          allowlist.py domain filter
-                                     │
-                    ┌────────────────┴────────────────┐
-                    ▼                                 ▼
-             MatchResult{best, runner_up,      audit/run_log.py
-             all_scored, decision}             every reject + reason
+                                       │
+                    ┌──────────────────┴───────────────────┐
+                    ▼                                      ▼
+             MatchResult{best, runner_up,           audit/run_log.py
+             all_scored, verdict}                   every reject + reason
                     │
                     ▼
              evidence/bundle.py ──► canonical.py ──► sha256/keccak256
@@ -105,7 +116,39 @@ webcam frame (BGR ndarray)
                                              chain/ots.py  ──► .ots proof
 ```
 
-**The load-bearing property:** the box labelled "SAME face core, re-applied" is the same code that produced the probe embedding. One implementation, used for probe encoding, candidate verification, and corpus indexing. That is what lets Google Lens (an image-similarity engine) and Bluesky (a raw post firehose) feed one decision function.
+**The load-bearing property:** the box labelled "SAME face core, re-applied" is the same code that produced the probe embedding. Web detection returns *visual similarity*, which includes wrong people; our ArcFace re-verification is what converts that into a face match. That stage is the project's actual technical contribution, and it is why provider scores are never trusted (R-03).
+
+## 2a. Quality gates — derived from measurement, not taste
+
+Every number here came from `scripts/probe_accuracy.py` run against real fixtures. Recorded so they are defensible rather than arbitrary.
+
+**Face size vs embedding stability** (same photo, progressively downscaled, cosine against full-res):
+
+| face px | 232 | 174 | 119 | 87 | 61 | 43 | 31 | 20 |
+|---|---|---|---|---|---|---|---|---|
+| cosine | 1.000 | 0.972 | 0.971 | 0.970 | 0.962 | 0.954 | **0.868** | **0.767** |
+
+Stable to ~43 px, then degrades sharply. **Gate: reject faces with min(width,height) < 50 px.** Below that the embedding is unreliable and will generate false scores.
+
+**Blur vs embedding stability** (gaussian blur, Laplacian variance as the blur proxy):
+
+| kernel | 1 | 3 | 7 | 13 | 21 | 31 |
+|---|---|---|---|---|---|---|
+| lap var | 499.7 | 36.2 | 7.9 | 3.6 | 2.3 | 1.8 |
+| cosine | 1.000 | 0.984 | 0.980 | 0.974 | 0.949 | 0.904 |
+
+ArcFace is far more blur-robust than expected — still 0.90 under heavy blur. **No blur gate needed.** Worth recording because the intuitive assumption was wrong.
+
+**What a true non-match looks like** (9 confirmed different people vs one reference):
+
+```
+max 0.0738   mean -0.0241   std 0.0543   mean+4*std = 0.1930
+same-person reference (obama1 vs obama2) = 0.7652
+```
+
+Two consequences:
+1. The separation is wide. Non-matches cluster near zero; a true match sits near 0.77. The `0.42` placeholder threshold is conservative and safe, sitting far above the 4-sigma noise ceiling of 0.193.
+2. **Anything in the 0.0–0.2 band is noise, not a weak match.** The UI must never present scores in that band as ranked suggestions — that was the cause of the "it showed me random female faces" report. See R-21.
 
 ## 3. Component boundaries
 
@@ -155,10 +198,11 @@ class SearchProvider(Protocol):
 | Face detection | **OpenCV YuNet** (`cv2.FaceDetectorYN`) | Ships in opencv, returns bbox + 5 landmarks, all post-processing internal. Zero extra decode code | SCRFD `det_10g` — better accuracy, needs ~80 lines of anchor decoding. Kept as a Phase-7 optional upgrade |
 | Face embedding | **ArcFace `w600k_r50.onnx`** via onnxruntime | SOTA-class, 512-d, CPU-viable, well-documented preprocessing | FaceNet (weaker separation), dlib 128-d (2017-era, will false-match on camera) |
 | Model runtime | `onnxruntime` CPU | One wheel, no compiler, no CUDA version matching | `insightface` pip package — builds Cython extensions, commonly fails on Windows without VS Build Tools. **Primary reason for the ONNX-direct approach** |
-| Vector search | **numpy brute-force dot product** | 512-d × 10k vectors is 20 MB; a matmul is microseconds. One less wheel | FAISS — one-line swap if the corpus exceeds ~10⁵. Not needed at our scale |
-| Liveness | Silent-Face anti-spoof ONNX | Small, CPU-fast, turns "upload a JPEG" into "face scan" | Blink detection — needs multi-frame logic, more fragile on camera |
-| Primary search | Google Lens via SerpApi | Genuine open web, free tier ~100/mo, stable JSON | Yandex scraping — captcha pages returned as HTTP 200, silent failure. PimEyes scraping — ToS violation, tooling broken |
-| Fallback search | Bluesky AT Protocol | No auth for public reads, live real posts, no quota | Twitter/X API — paid. Instagram — hostile to automation |
+| Vector search | **numpy brute-force dot product** | Only used by the keyless Bluesky fallback now. 512-d × 10k is 20 MB; a matmul is microseconds | FAISS — unnecessary. The primary path needs no index at all |
+| Quality gate | **min face size 50 px**, no blur gate | Both derived from measurement, not intuition — see §2a | A blur gate: measured as unnecessary (0.90 cosine under heavy blur) |
+| Liveness | Silent-Face anti-spoof ONNX, **3-state** | Meaningful on webcam capture; **not measurable on an uploaded file**, and must not claim otherwise (D-20) | Blink detection — multi-frame, more fragile on camera |
+| **Primary search** | **Web detection** — SerpApi Google Lens now, Google Cloud Vision `WEB_DETECTION` as a second backend | **One call reaches every platform Google indexed.** Proven live: returned instagram, facebook, youtube, x, reddit post URLs. Free tiers: SerpApi ~100/mo (working today), GCV 1,000/mo | Per-platform API integration — see the rejected-approaches note below |
+| Fallback search | Bluesky AT Protocol | Keyless, so the repo runs with no `.env`. **Closed corpus — labelled as a demo of the verifier, not as a web search** | — |
 | Perceptual hash | `ImageHash` (phash) | Cheap dedupe of the same image served from many CDNs | — |
 | CLI | `typer` | Type-hint driven, minimal boilerplate | argparse (verbose), click (more wiring) |
 | Console output | `rich` | Tables and colour read well at 1080p. **A recording deliverable, not decoration** | plain print |
@@ -167,6 +211,24 @@ class SearchProvider(Protocol):
 | Primary chain | Base Sepolia (84532) | Live faucet, ~2 s blocks, public explorer | Polygon Amoy — official faucet retired, public RPC deprecated. Ethereum Sepolia — mid-transition, support winding down |
 | Second anchor | OpenTimestamps → Bitcoin mainnet | Free, no wallet, permanent, independent chain | — |
 | Offline chain | Anvil | Demo cannot fail on RPC flake | Ganache — unmaintained |
+
+### Rejected: a per-platform API layer
+
+An earlier revision of this document proposed a second search layer that resolved an identity string to accounts on each platform (`app.bsky.actor.searchActors`, GitHub user search, YouTube channel search, Mastodon account search) and then verified their images. It was **built as a probe, validated, and then deliberately dropped.**
+
+It worked — `scripts/probe_identity_route.py` scored 14 real images from `barackobama.bsky.social`, returning 10 above threshold with a best of 0.7506 and clean separation (next non-Obama face at 0.166). The plumbing is sound and the probe is kept for reference.
+
+It was dropped because it solves a problem web detection already solves, at much higher cost:
+
+| | Web detection | Per-platform APIs |
+|---|---|---|
+| Platform reach | Every platform Google indexed — **proven: instagram, facebook, youtube, x, reddit** | Only platforms with a free search API |
+| X / Twitter | reachable via indexed links | **impossible** — no free tier since Feb 2026, pay-per-use at $0.005/read |
+| Instagram / Facebook / TikTok | reachable via indexed links | **impossible** — no public search API |
+| Integrations to build and maintain | 1 | 1 per platform |
+| Depends on an identity string being extracted correctly | no | yes — an extra failure mode |
+
+The one genuine advantage the platform route had: it fetches images from the platform's own CDN at verification time, whereas web detection verifies against Google's cached thumbnail. That is a real difference in evidence integrity, and it is handled by recording *exactly what was fetched and hashed* in the evidence bundle rather than by adding a whole subsystem.
 
 ## 5a. Local demo UI (amended 5 Sep 2026, prd.md G8/S13)
 
@@ -182,11 +244,19 @@ webapp/
 
 | Endpoint | Calls | Returns |
 |---|---|---|
-| `POST /api/scan` | `face.detect`, `face.align`, `face.embed`, `face.liveness` | aligned crop (base64 PNG), liveness verdict, embedding provenance hash (never the vector — R-01) |
-| `POST /api/search` | `search.orchestrator.gather`, `verify.matcher` | ranked candidate list: score, source, domain, decision, reason — the same fields as the `rich` CLI table |
+| `POST /api/scan` | `face.detect`, `face.quality`, `face.align`, `face.embed`, `face.liveness` | aligned crop (base64 PNG), liveness verdict (3-state), face pixel size, embedding provenance hash (never the vector — R-01) |
+| `POST /api/upload` | same as `/api/scan` but liveness reported `N/A` (D-20) | same shape as `/api/scan` |
+| `POST /api/search/{run_id}` | `search.orchestrator.gather`, `verify.matcher` | ranked candidate list: score, source, domain, decision, reason — the same fields as the `rich` CLI table |
 | `GET /api/run/{id}` | reads `runs/<id>/` | full run for redisplay |
 
 Runs on `127.0.0.1` only, no auth, single local user — acceptable for a local demo tool, called out explicitly in the README as not suitable for any network-exposed deployment. It is not a second implementation to maintain: if `orchestrator.gather` changes shape, the UI breaks loudly (a Python import error) rather than silently drifting from the CLI.
+
+**UI presentation rules (R-21), driven by the §2a measurements:**
+
+1. Two input tabs: **Webcam** and **Upload image**. Both first-class (D-19). Upload is not a fallback — it is the only way to probe a public figure, which the web-detection path needs.
+2. Liveness renders three distinct states, never two: `LIVE` (green), `SPOOF` (red, blocks the run), `N/A — provenance unverified` (neutral grey, uploads only).
+3. On `NO_MATCH`, the verdict is the headline. The candidate list **collapses behind a "show diagnostics" toggle** and is captioned as rejected candidates. Scores in the 0.0–0.2 noise band must never be presented as ranked suggestions.
+4. Every row shows the reject reason, and the threshold and margin in force are always visible so a score can be read against them.
 
 ## 6. Directory layout
 
@@ -204,9 +274,10 @@ face-chain-verify/
 │   └─ warmup.py                  # pre-load sessions before recording
 ├─ pipeline/
 │   ├─ __init__.py  config.py  cli.py
-│   ├─ face/        liveness.py  detect.py  align.py  embed.py  types.py
-│   ├─ search/      base.py  orchestrator.py  bluesky.py  google_lens.py
-│   │               bing_visual.py  mastodon.py  facecheck.py  search4faces.py
+│   ├─ face/        liveness.py  detect.py  align.py  embed.py  quality.py  types.py
+│   ├─ search/      base.py  orchestrator.py
+│   │               web_detect.py       # PRIMARY: serpapi + gcv backends
+│   │               bluesky.py          # keyless fallback, closed corpus
 │   ├─ verify/      dedupe.py  allowlist.py  matcher.py  calibrate.py
 │   ├─ evidence/    canonical.py  bundle.py  c2pa.py  ipfs.py
 │   ├─ chain/       evm.py  ots.py  reverify.py  abi/
@@ -247,17 +318,18 @@ Single source of truth in `pipeline/config.py`, loaded from `.env` with defaults
 
 | Var | Default | Effect if unset |
 |---|---|---|
-| `SERPAPI_KEY` | none | Lens provider reports `available() == False`, skipped silently |
-| `AZURE_VISION_KEY` | none | Bing provider skipped |
-| `BLUESKY_CRAWL_LIMIT` | `2000` | posts to ingest per run |
+| `SERPAPI_KEY` | none | SerpApi web-detection backend reports `available() == False`, skipped silently |
+| `GCV_API_KEY` | none | Google Cloud Vision `WEB_DETECTION` backend skipped. Either backend alone is sufficient |
+| `WEB_DETECT_BACKEND` | `auto` | `auto` uses whichever key is present, preferring `gcv` for its larger quota. Force with `serpapi` or `gcv` |
+| `MIN_FACE_PX` | `50` | quality gate, derived in §2a. Faces smaller than this are rejected, not scored |
+| `BLUESKY_CRAWL_LIMIT` | `300` | fallback-provider corpus size. Lowered from 2000: measured ~86 faces per 200 posts at ~27 s, and the fallback is a demo aid, not the primary path |
 | `MATCH_THRESHOLD` | from `calibration/threshold.json` | never hardcoded inline (R-09) |
 | `MATCH_MARGIN` | from `calibration/threshold.json` | — |
 | `EVM_RPC_URL` | `http://127.0.0.1:8545` | falls back to local Anvil |
 | `EVM_CHAIN` | `anvil` | `base-sepolia` to go public |
-| `PRIVATE_KEY` | none | anchoring disabled, pipeline still runs |
+| `EVM_PRIVATE_KEY` | none | anchoring disabled, pipeline still runs |
 | `PINATA_JWT` | none | IPFS skipped, bundle stays local |
-| `FACECHECK_KEY` | none | provider disabled (default) |
-| `HTTP_CACHE` | `1` | set `0` to force live fetches |
+| `HTTP_CACHE` | `1` | set `0` to force live fetches. **Leave on** — it is what protects the SerpApi quota (R-04) |
 
 ## 9. Failure isolation
 
@@ -265,8 +337,9 @@ The demo must survive any single external dependency failing. How each is contai
 
 | Dependency | If it fails | Containment |
 |---|---|---|
-| SerpApi (quota/outage) | Lens provider returns `[]` | Bluesky provider still produces a match |
-| Bluesky API | provider returns `[]` | Lens still produces a match |
+| SerpApi quota exhausted | that backend returns `[]` | Switch to the GCV backend (1,000/mo vs 100/mo). Cached responses still replay offline |
+| Both web-detection backends down | primary path returns `[]` | Bluesky fallback still demonstrates the verifier, but **this is a degraded run and the UI must say so** — it is no longer a web search |
+| Bluesky API | fallback returns `[]` | Primary path is unaffected |
 | Base Sepolia RPC | anchor step errors | `EVM_CHAIN=anvil` fallback, identical code path |
 | Pinata | no CID | bundle stays local; hash and chain record unaffected |
 | OTS calendars | no `.ots` proof | EVM anchor is independent |

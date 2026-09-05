@@ -46,6 +46,9 @@ This is the primary user. There is no second user in the 3-day window.
 | G6 | Runnable by a judge who clones the repo, with no paid account | Supports "how to run it" |
 | G7 | Never publish or persist a recoverable biometric template | Ethics, legal, and a scoring differentiator |
 | G8 | A local browser page that shows the judge the probe face, the candidate table, and the match verdict as it happens | Makes the pipeline legible on camera without narrating every line of terminal output |
+| G9 | Accept a probe face from **either** a webcam capture or an uploaded image file | The brief says "input image". Upload is also the only way to probe a public figure, which the web-detection path requires (D-19) |
+| G10 | Reach any platform Google has indexed — X, Instagram, Facebook, YouTube, Reddit — through one web-detection call rather than per-platform integrations | X has no free API since Feb 2026; Instagram and Facebook have no public search API. Web detection is the only route that covers them (D-21) |
+| G11 | Never overstate confidence: reject noise-band scores clearly, and never label an upload as liveness-verified | Correctness of the *claim*, not just the computation (R-21, R-22) |
 
 ## 5. Non-goals
 
@@ -79,6 +82,11 @@ The project ships when all of these are demonstrably true. "Demonstrably" means 
 | S11 | The accept threshold is derived from a committed ROC curve, not hardcoded | `calibration/` |
 | S12 | No embedding, and no reversible derivative of one, appears in any committed artifact or on chain | Code review + `rules.md` R-01 |
 | S13 | Opening `localhost` shows a webcam capture, the aligned probe crop, a liveness verdict, and a candidate table with scores and accept/reject reasons, using the same run data as the CLI | Manual check + screenshot in `runs/` |
+| S14 | A probe of a public figure returns a **real social media post URL** that opens in a browser, verified by our own ArcFace score above the calibrated threshold | On camera, plus the run committed to `runs/` |
+| S15 | The candidate table shows web-detection results spanning **more than one platform** (e.g. instagram + reddit + youtube), each with its own score and decision | On camera — this is the evidence that we searched the web, not one site |
+| S16 | An uploaded image works as a probe, and its liveness renders as `N/A — provenance unverified`, never as `LIVE` | On camera |
+| S17 | A face smaller than `MIN_FACE_PX` is rejected with a clear reason rather than scored | Test + visible in `audit.json` |
+| S18 | On `NO_MATCH`, no rejected candidate is presented as a ranked suggestion | Manual check against R-21 |
 
 ## 7. Requirement traceability
 
@@ -121,12 +129,16 @@ Maps the brief's literal wording to where we satisfy it. Keep this current; it g
 
 Written now, before a judge finds them. These go in the README verbatim.
 
-1. Open-web coverage depends on the subject being indexed. A subject with no online presence correctly returns `NO_MATCH`.
-2. The Bluesky provider searches a corpus we build at runtime, not the whole web. It is a fallback, not the primary open-web claim.
-3. Google Lens returns visual similarity, not face identity. Accuracy comes from our local verification stage, which is why the ROC curve is published.
-4. The similarity threshold is calibrated on a small labelled pair set, not a benchmark-scale evaluation.
-5. Base Sepolia is a testnet. Records carry no economic finality.
-6. Face recognition has documented demographic accuracy disparities. Our small calibration set cannot characterise them.
+1. Open-web coverage depends on the subject being indexed by Google. A subject with little or no online presence correctly returns `NO_MATCH`. The pipeline works best on public figures; this is a property of the underlying index, not of our verifier.
+2. Web detection returns **visual similarity, not face identity**. Roughly 16% of returned links were on social domains in our measured sample, and many candidates are the wrong person. Accuracy comes entirely from our local ArcFace verification stage, which is why the ROC curve and threshold are published.
+3. **Verification is performed against the thumbnail the search engine served, not the live image on the platform.** The evidence bundle records the exact URL fetched and its sha256. We cannot assert that the platform's current image is unchanged.
+4. The Bluesky provider searches a corpus we build at runtime, not the whole web. It exists so the repo runs with no API key. A Bluesky-only run is a demonstration of the verifier, not a web search, and is labelled as such.
+5. X/Twitter, Instagram, Facebook, TikTok and LinkedIn are reachable **only** as indexed links. None offers a free search API (X moved to pay-per-use in Feb 2026), so we cannot query them directly or confirm a post still exists.
+6. The similarity threshold is calibrated on a small labelled pair set, not a benchmark-scale evaluation. Measured separation was wide (same-person 0.765 vs non-match ceiling 0.074), but that is not a substitute for a proper benchmark.
+7. Faces below ~50 px produce unreliable embeddings and are rejected rather than scored. Measured: cosine self-similarity falls to 0.868 at 31 px and 0.767 at 20 px.
+8. Liveness applies to webcam capture only. For an uploaded file we cannot determine provenance and do not claim to.
+9. Base Sepolia is a testnet. Records carry no economic finality.
+10. Face recognition has documented demographic accuracy disparities. Our small calibration set cannot characterise them, and we make no claim of uniform accuracy across groups.
 
 ## 11. Open questions
 

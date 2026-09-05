@@ -148,9 +148,45 @@ def check(bgr: np.ndarray, face: DetectedFace,
           threshold: float = 0.7) -> LivenessResult
 ```
 
-Applies to webcam input only. Candidate images downloaded from the web are already photographs of photographs by definition, so liveness is skipped there — an important asymmetry to state in the README.
+**Three states, never two (D-20).** An anti-spoof model detects print and
+replay artifacts in a *camera capture*. A clean uploaded JPEG of a real
+person will typically score "live" while proving nothing about physical
+presence, so reporting `LIVE` for an upload would be a false assurance.
 
-Degradation: if the model file is absent, return `LivenessResult(True, 0.0, "unknown")` and log a warning. Missing liveness must not break the pipeline.
+| Input | `passed` | `label` | UI |
+|---|---|---|---|
+| webcam, score ≥ threshold | `True` | `live` | `LIVE`, green |
+| webcam, score < threshold | `False` | `spoof` | `SPOOF`, red, blocks the run |
+| **uploaded file** | `True` | **`not_applicable`** | `N/A — provenance unverified`, neutral grey |
+
+`passed=True` on the upload path means "does not block", not "verified live".
+Never render the upload state in the same visual style as a real `live` pass.
+
+Liveness is likewise skipped for candidate images downloaded from the web —
+they are photographs of photographs by definition.
+
+Degradation: if the model file is absent, return
+`LivenessResult(True, 0.0, "unknown")` and log a warning. Missing liveness
+must not break the pipeline.
+
+### 1.7 Quality gate — `face/quality.py`
+
+Derived from measurement (`architecture.md` §2a), not intuition.
+
+```python
+MIN_FACE_PX = 50   # config-overridable via MIN_FACE_PX
+
+def passes(face: DetectedFace) -> tuple[bool, str]:
+    """Returns (ok, reason). Faces below MIN_FACE_PX produce unreliable
+    embeddings: measured cosine-vs-reference falls to 0.868 at 31px and
+    0.767 at 20px, versus 0.954 at 43px."""
+```
+
+Applied in two places, using the same function:
+- **probe**: a too-small face is a hard error with a clear message ("move closer to the camera" / "supply a higher-resolution image")
+- **candidates**: a too-small face is `reject-face-too-small`, logged with its pixel size, never silently dropped
+
+No blur gate: measured as unnecessary (cosine still 0.904 under heavy blur).
 
 ---
 
@@ -169,9 +205,59 @@ def gather(aligned_png: bytes, probe: Embedding,
 - A provider that raises is recorded in its `ProviderReport` and contributes zero candidates. **No provider can abort a run** (R-14).
 - Per-provider timeout, so one slow source cannot stall the demo.
 
-### 2.2 Bluesky provider — `search/bluesky.py`
+### 2.1a Web detection provider — `search/web_detect.py`  ·  **PRIMARY**
 
-The zero-API-key path, and Day 1's target. Two-phase: ingest, then query.
+One call reaches every platform Google has indexed. This replaces the
+per-platform integration layer entirely (`architecture.md` §5, "Rejected").
+
+Two interchangeable backends behind one provider:
+
+| Backend | Endpoint | Free tier | Status |
+|---|---|---|---|
+| `serpapi` | `serpapi.com/search?engine=google_lens&url=<img>` | ~100/mo | **[V] proven live** |
+| `gcv` | `vision.googleapis.com/v1/images:annotate`, feature `WEB_DETECTION` | 1,000/mo | **[A]** schema known from docs, not yet exercised |
+
+**[V] Verified SerpApi response shape** (`scripts/probe_lens.py`, cached to
+`.cache/lens_probe/`). Measured on one real face photo:
+
+```
+visual_matches:   59      organic_results: 9      related_content: 1
+related_content[0].query == "Barack Obama"     <- identity signal
+11 of 68 links on social domains: facebook, instagram, youtube, x, reddit
+```
+
+Fields we consume:
+
+| Field | Use |
+|---|---|
+| `visual_matches[].link` | `Candidate.page_url` |
+| `visual_matches[].thumbnail` / `.image` | `Candidate.image_url` — what we download and verify |
+| `visual_matches[].title` | audit log context, and a secondary identity signal |
+| `organic_results[].link` / `.title` | additional candidates |
+| `related_content[].query` | recorded as the identity signal Google inferred. **Context only — never used in the accept decision** (R-03) |
+
+GCV backend maps to the same `Candidate` shape from `webDetection.pagesWithMatchingImages`, `.fullMatchingImages`, `.partialMatchingImages`, `.visuallySimilarImages`, with `webEntities[].description` as the identity signal.
+
+**Known gotchas.**
+- SerpApi requires a publicly reachable image URL, so an uploaded probe must be hosted or passed via the file-upload endpoint. **[A] resolve before implementing** — this is the last significant unknown.
+- GCV `WEB_DETECTION` sometimes returns only `webEntities`/`bestGuessLabels` with the image-URL arrays absent. Handle empty arrays as a valid zero-candidate result, never as an error.
+- Roughly 16% of returned links were on social domains in the one measured sample. Expect most candidates to be rejected by the allowlist — that is normal and must be visible in the audit log, not hidden.
+
+**Evidence-integrity note.** We verify the face against the thumbnail the
+search engine served, not the live image on the platform. The evidence bundle
+therefore records the exact `image_url` fetched, its `sha256`, and the fact
+that verification was performed against a search-engine-cached copy. This is
+a real limitation and is disclosed in the README rather than papered over.
+
+### 2.2 Bluesky provider — `search/bluesky.py`  ·  **KEYLESS FALLBACK ONLY**
+
+Retained so the repo runs with no `.env` at all, and to demonstrate the
+verifier when no key is configured. **It searches a corpus we build
+ourselves, so it is not an answer to "search the web"** and the UI must
+label any Bluesky-only run as a degraded, closed-corpus run
+(`architecture.md` §9).
+
+Two-phase: ingest, then query.
 
 **Ingest.** Two possible sources, in preference order:
 
@@ -209,19 +295,10 @@ Persist the index to `.cache/bluesky_index.npz` so repeated demo runs do not re-
 
 Politeness (R-12): capped concurrency, descriptive User-Agent with a contact URL, `tenacity` exponential backoff, hard cap from `BLUESKY_CRAWL_LIMIT`.
 
-### 2.3 Google Lens provider — `search/google_lens.py`
+### 2.3 (superseded)
 
-**[V]** SerpApi, `engine=google_lens`. Free tier is roughly 100 searches/month, so caching is mandatory (R-04).
-
-SerpApi needs a publicly reachable image URL, it cannot accept raw bytes **[A]**. Options, in order:
-1. Upload the aligned crop to a temporary public host and pass its URL.
-2. Use the SerpApi endpoint that accepts an uploaded file if one is available at build time.
-
-Resolve this in Phase 5; it is the main unknown in the open-web path.
-
-Parse `visual_matches[]` → `Candidate(image_url=thumbnail_or_original, page_url=link, source="google_lens", provider_score=None, raw=item)`.
-
-`provider_score` is left `None` deliberately. Lens gives no similarity number, and we would not use it if it did (R-03).
+The former "Google Lens provider" section is now §2.1a `web_detect.py`, which
+covers both the SerpApi and Google Cloud Vision backends behind one provider.
 
 ### 2.4 Dedupe — `verify/dedupe.py`
 
@@ -292,11 +369,22 @@ Rejection reasons, all logged verbatim:
 | Reason | Meaning |
 |---|---|
 | `reject-no-face` | no face detected in the candidate image |
+| `reject-face-too-small` | face below `MIN_FACE_PX`; embedding would be unreliable (§1.7) |
 | `reject-below-threshold` | scored under the calibrated threshold |
 | `reject-margin` | above threshold but too close to the runner-up |
 | `reject-domain` | not on the social allowlist |
 | `reject-duplicate` | collapsed by phash |
 | `reject-fetch-failed` | image could not be downloaded |
+
+**Score-band semantics**, from the §2a measurements. These are presentation
+rules, not extra thresholds — the accept decision remains threshold + margin.
+
+| Band | Meaning | UI treatment |
+|---|---|---|
+| ≥ threshold (0.42 provisional) | candidate match | full row, highlighted if ACCEPT |
+| 0.20 – threshold | weak similarity, rejected | shown in diagnostics, plainly marked rejected |
+| **0.00 – 0.20** | **statistical noise** — measured non-match ceiling was 0.074, mean+4σ = 0.193 | **never presented as a ranked suggestion** (R-21) |
+| < 0.00 | unrelated | diagnostics only |
 
 When a candidate image contains several faces, score all of them and keep the maximum.
 

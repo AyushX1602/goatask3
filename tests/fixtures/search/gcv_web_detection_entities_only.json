@@ -1,0 +1,22 @@
+{
+  "_fixture_note": "A-08 edge case: labels present, all image arrays absent.",
+  "responses": [
+    {
+      "webDetection": {
+        "webEntities": [
+          {
+            "entityId": "/m/02mjmr",
+            "score": 0.88,
+            "description": "Barack Obama"
+          }
+        ],
+        "bestGuessLabels": [
+          {
+            "label": "barack obama",
+            "languageCode": "en"
+          }
+        ]
+      }
+    }
+  ]
+}

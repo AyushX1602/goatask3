@@ -103,11 +103,19 @@ def _load_or_create_salt() -> bytes:
 @dataclass(frozen=True)
 class Config:
     # Search providers — presence of a key is what SearchProvider.available() checks
+    # Free / free-tier providers only.
+    # Dropped 5 Sep 2026: commercial face-search APIs paywall source URLs
+    # (D-17), and Bing Visual Search was retired by Microsoft 11 Aug 2025
+    # (D-18). SerpApi/Google Lens is consequently our sole open-web provider.
     serpapi_key: str | None = field(default_factory=lambda: _env("SERPAPI_KEY"))
-    azure_vision_key: str | None = field(default_factory=lambda: _env("AZURE_VISION_KEY"))
-    azure_vision_endpoint: str | None = field(default_factory=lambda: _env("AZURE_VISION_ENDPOINT"))
-    facecheck_key: str | None = field(default_factory=lambda: _env("FACECHECK_KEY"))
-    search4faces_key: str | None = field(default_factory=lambda: _env("SEARCH4FACES_KEY"))
+    # GCV is the PRIMARY backend (D-28): ~1,000 units/mo free vs SerpApi's
+    # ~100, and it accepts raw base64 so there is no public-URL problem.
+    gcv_api_key: str | None = field(default_factory=lambda: _env("GCV_API_KEY"))
+    # auto | gcv | serpapi. 'auto' prefers gcv for the larger quota.
+    web_detect_backend: str = field(
+        default_factory=lambda: _env("WEB_DETECT_BACKEND", "auto")
+    )
+    min_face_px: int = field(default_factory=lambda: _env_int("MIN_FACE_PX", 50))
 
     # Bluesky
     bluesky_crawl_limit: int = field(default_factory=lambda: _env_int("BLUESKY_CRAWL_LIMIT", 2000))
@@ -136,9 +144,9 @@ class Config:
         return (
             "Config("
             f"serpapi_key={has(self.serpapi_key)}, "
-            f"azure_vision_key={has(self.azure_vision_key)}, "
-            f"facecheck_key={has(self.facecheck_key)}, "
-            f"search4faces_key={has(self.search4faces_key)}, "
+            f"gcv_api_key={has(self.gcv_api_key)}, "
+            f"web_detect_backend={self.web_detect_backend}, "
+            f"min_face_px={self.min_face_px}, "
             f"pinata_jwt={has(self.pinata_jwt)}, "
             f"evm_chain={self.evm_chain}, "
             f"evm_private_key={has(self.evm_private_key)}, "

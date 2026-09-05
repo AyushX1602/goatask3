@@ -103,6 +103,31 @@ A provider that raises, times out, or returns nothing is logged and contributes 
 
 *Why:* the offline fallback is only useful if it is provably the same pipeline.
 
+### R-21 — Never present a rejected candidate as a suggestion
+
+When the verdict is `NO_MATCH`, the verdict is the headline. Rejected
+candidates go behind a "show diagnostics" affordance, captioned as rejected.
+Scores in the 0.0–0.2 band are **statistical noise** and must never be
+rendered as a ranked list of possible people.
+
+*Why:* measured non-match scores top out at 0.074 (mean −0.024, σ 0.054,
+mean+4σ = 0.193) while a true match sits near 0.77 (`architecture.md` §2a).
+A ranked table of 0.1-scoring faces reads as "the system thinks these might
+be you" when the system in fact rejected all of them. This produced a real
+false impression during testing that the engine was inaccurate, when the
+engine was correct and only the presentation was wrong. Misrepresenting
+confidence in a biometric tool is a correctness bug, not a cosmetic one.
+
+### R-22 — Liveness must not claim what it cannot measure
+
+`LIVE` may only be shown for a webcam capture that passed the anti-spoof
+model. An uploaded file reports `not_applicable`, rendered neutrally, never
+in the same style as a real pass. See D-20 and `design.md` §1.6.
+
+*Why:* an anti-spoof model detects capture artifacts. Given a clean file it
+will usually say "live" while proving nothing about physical presence.
+Presenting that as a liveness pass is a false assurance.
+
 ### R-16 — `NO_MATCH` is a valid, first-class outcome
 
 Never fabricate, relax a threshold, or widen a search to force a match. At least one committed run in `runs/` must legitimately be `NO_MATCH`.
@@ -163,8 +188,8 @@ The 3-day window is the binding constraint. When time is short, cut in this orde
 
 ```
 1. C2PA manifest
-2. Bing Visual provider
-3. Mastodon provider
+2. Google Cloud Vision backend  (SerpApi backend alone is sufficient)
+3. Bluesky keyless fallback     (nice-to-have; primary path does not need it)
 4. IPFS upload
 5. OpenTimestamps
 6. Liveness gate
@@ -172,7 +197,12 @@ The 3-day window is the binding constraint. When time is short, cut in this orde
 
 **Never cut, under any circumstance:**
 
+- Image upload as an input mode — the web-detection path is untestable without it (D-19)
+- The web-detection provider — it is the only thing that satisfies "search the web"
+- Local ArcFace re-verification of every candidate — without it we are a search wrapper
 - The candidate table with rejection reasons
+- The quality gate (`MIN_FACE_PX`)
+- Correct `NO_MATCH` presentation (R-21)
 - The tamper demo (`verify` reporting `TAMPERED`)
 - The committed `NO_MATCH` run
 - The audit log

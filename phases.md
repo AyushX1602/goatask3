@@ -79,6 +79,112 @@ Target by end of day: a live webcam capture finds a real Bluesky post and prints
 
 **Exit criterion — met, informally.** Measured live: 200 posts crawled, 86 faces indexed, 27.1s elapsed (first version, before the concurrency fix, timed out at 90s for 150 posts — see memory.md for the diagnosis). A probe face known to be absent from a 300-post crawl correctly returned `NO_MATCH` with all candidates rejected below threshold, proving the query path works and doesn't fabricate matches. A same-face-in-corpus rank-0 test (the originally planned exit criterion) was not separately run — worth doing before trusting this at scale.
 
+## Phase 3b — CANCELLED (superseded by D-21)
+
+Proposed a "scoped crawl" using hand-picked Bluesky seed handles so a MATCH could be demonstrated. **Cancelled.** Web detection reaches real social posts across many platforms without us choosing where to look, which removes both the need for scoped crawling and the honesty problem it carried. `config.bluesky_seed_handles` stays unused; remove it during Phase 5a cleanup.
+
+---
+
+# FINAL PLAN (5 Sep 2026, owner-approved) — scoped for a shortlisting task
+
+Supersedes everything below. Rationale in `memory.md` §3b (D-25..D-33).
+Remaining effort ≈ 8–10 focused hours. Face core is **done, do not touch it** (D-25).
+
+| # | Step | Exit criterion (must be executed and observed) |
+|---|---|---|
+| **F1** | `cache/http_cache.py` — R-04 | A repeated request is served from `.cache/` and makes no network call. Built **before** any live API call |
+| **F2** | `face/quality.py` — `MIN_FACE_PX = 50` (D-23) | A 30 px face is rejected with `reject-face-too-small`; a 200 px face passes |
+| **F3** | `search/web_detect.py` — GCV primary, mocked fixtures (D-28, D-30) | Fixture JSON parses into `Candidate` objects; empty image arrays treated as zero candidates, not an error |
+| **F4** | Candidate verification loop in `orchestrator` + `matcher` | A run downloads every candidate, scores all faces per image, and emits a full ranked table with reject reasons |
+| **F5** | Image upload input: CLI `--image PATH` + `POST /api/upload` (D-19) | The Obama portrait drives a full run; liveness reports `N/A`, never `LIVE` (R-22) |
+| **F6** | UI correctness pass (R-21, D-24) | A `NO_MATCH` run cannot be misread as "these people might be you" |
+| **F7** | `evidence/canonical.py` + `bundle.py` + salted commitment (D-26) | Two identical runs produce byte-identical `evidence.json` and the same hash. No floats in hashed output |
+| **F8** | `contracts/EvidenceRegistry.sol` + Foundry + Anvil deploy (D-27) | `anchor` → `verify` round trip green; double-anchor reverts |
+| **F9** | `chain/evm.py` + **the tamper demo** | `verify` PASSes on an untouched bundle; a one-character edit reports `TAMPERED` with a non-zero exit code |
+| **F10** | README front door, `docs/` move (D-33), 2–3 sample runs incl. a real `NO_MATCH` | Clean clone + install + run works; README covers what / how-to-run / which-chain / limitations |
+| **F11** | Screen recording | One take: detect → search → candidate table → real post in browser → anchor → verify PASS → tamper FAIL → `NO_MATCH` run |
+
+**Optional, only if F1–F11 are solid:** SerpApi secondary provider (needs S3 presigned URL, D-31) → Base Sepolia bonus anchor.
+
+**Never cut:** candidate rejection table · tamper demo · committed `NO_MATCH` run · audit log · README limitations.
+
+---
+
+# Superseded plan (kept for traceability)
+
+## Earlier revision — web detection as the primary path
+
+Supersedes the original Phase 5/6 ordering. Rationale in `memory.md` D-21..D-24 and §3a. Everything below is free of blockchain work; the pre-existing stop instruction still applies at the end of Phase 5d.
+
+## Phase 5a — Web detection provider  ·  ~3 h  ·  **THE CRITICAL PHASE**
+
+Nothing else in the project satisfies "search the web". If this does not work, the submission does not meet the brief.
+
+- [ ] `cache/http_cache.py` **first** — R-04. Must exist before any live SerpApi call, or debugging will burn the ~100/mo quota. Key on (url, sorted params), store response bodies under `.cache/`, honour `HTTP_CACHE=0`.
+- [ ] **Resolve the last open unknown (A-03):** how to submit a *local* probe image to SerpApi. It needs a publicly reachable URL. Options: temporary upload host, or a SerpApi file-upload path if one exists. **Settle this before writing the provider** — it gates the whole phase.
+- [ ] `search/web_detect.py` with a `serpapi` backend per `design.md` §2.1a. Parse `visual_matches[]` + `organic_results[]` into `Candidate`. Record `related_content[].query` as the identity signal, context only (R-03).
+- [ ] Persist every raw response to `runs/<id>/raw/` — unedited third-party JSON is the anti-fabrication evidence
+- [ ] Remove dead config: `bluesky_seed_handles`
+
+**Exit criterion:** a probe of a public figure returns ≥5 candidates including ≥1 on a social domain, with a real `page_url` that opens in a browser. A second identical run is served entirely from cache and the SerpApi dashboard counter **does not move**.
+
+## Phase 5b — Verification loop + quality gate  ·  ~3 h
+
+- [ ] `face/quality.py` — `MIN_FACE_PX = 50` gate per `design.md` §1.7, applied to both probe and candidates
+- [ ] Concurrent candidate image download, cached, per-image timeout
+- [ ] Score **every** face in each candidate image, keep the max
+- [ ] Wire `dedupe.py` (phash) and `allowlist.py` into the real path
+- [ ] Runner-up must come from a **different** `page_url` for the margin rule
+- [ ] New reject reason `reject-face-too-small`, logged with pixel size
+- [ ] Off-allowlist candidates scored and logged, never reported as the match
+
+**Exit criterion:** an end-to-end run on a public figure yields `verdict: MATCH` with a real social post URL, a score above threshold, and an `audit.json` listing every candidate with its score and reject reason. Satisfies prd.md S14 and S15.
+
+## Phase 5c — Image upload input  ·  ~1.5 h
+
+- [ ] `POST /api/upload` and a CLI `--image PATH` path, sharing one code path with webcam capture
+- [ ] Liveness returns `not_applicable` for uploads; `LivenessResult` gains that state (D-20, R-22)
+- [ ] UI: two input tabs, Webcam and Upload
+
+**Exit criterion:** an uploaded public-figure photo drives a full run, and its liveness renders `N/A — provenance unverified`, never `LIVE`. Satisfies S16.
+
+## Phase 5d — UI correctness pass  ·  ~1.5 h
+
+Fixes the real defect behind "it showed me random female faces" — a presentation fault, not a model fault (D-24).
+
+- [ ] On `NO_MATCH`, verdict is the headline; candidates collapse behind "show diagnostics", captioned as rejected
+- [ ] Never render 0.0–0.2 scores as ranked suggestions (R-21)
+- [ ] Show the active threshold and margin alongside every score
+- [ ] Show which providers ran, and label a Bluesky-only run as a degraded closed-corpus run
+- [ ] Show probe face pixel size and the gate outcome
+
+**Exit criterion:** a `NO_MATCH` run cannot be misread as "these people might be you" (S18), and a too-small face reports a clear reason (S17).
+
+**STOP HERE for owner verification, per the standing instruction. No blockchain work.**
+
+## Phase 5e — Calibration  ·  ~2 h  *(after the stop, before the recording)*
+
+- [ ] `calibration/pairs/` — ~100 positive, ~100 negative pairs
+- [ ] `verify/calibrate.py` — sweep, ROC, `roc.png`
+- [ ] Pick the operating point at a declared FMR ≤ 1%; write real `calibration/threshold.json`
+- [ ] Confirm no threshold literal remains in pipeline code (R-09)
+
+**Exit criterion:** `roc.png` and `threshold.json` committed with `measured_fmr`, and the Phase 5b run re-checked against the derived numbers. Until this lands, every score shown is against a provisional 0.42 and the UI should say so.
+
+## Phase 5f — Google Cloud Vision backend  ·  ~1.5 h  ·  *optional, cut candidate #2*
+
+- [ ] Second backend in `web_detect.py`, `WEB_DETECTION` feature, mapped to the same `Candidate`
+- [ ] `WEB_DETECT_BACKEND` switch, `auto` prefers gcv for its 10× quota
+- [ ] Handle the known case where only `webEntities` come back with image arrays absent
+
+**Exit criterion:** same probe, same `Candidate` shape, from either backend selected by env var alone.
+
+---
+
+## Original Phase 5 — superseded
+
+Kept for traceability. The old plan treated Google Lens as one provider among several including Bing Visual Search (retired, D-18) and paid face APIs (D-17). Replaced by 5a–5f above.
+
 ## Phase 4 — CLI end to end  ·  NOT DONE, superseded by Phase 4a for the demo path
 
 `scan`, `crawl`, `search`, `run-all` as standalone CLI commands do not exist yet. `version` and `serve` are the only commands in `cli.py`. The functionality exists but is currently only reachable via the web UI's endpoints. **This is a gap, not a design decision** — revisit before relying on the CLI for anything beyond `serve`.
@@ -103,10 +209,13 @@ Owner's explicit instruction: build the scanning interface and its logic, then *
 
 Target by end of day: Google Lens finds a real post for a public-figure probe, with a threshold derived from a committed ROC curve.
 
-## Phase 5 — Google Lens provider  ·  ~3 h
+## Phase 5 — Google Lens provider  ·  ~3 h  ·  **PRIORITY RAISED**
 
-- [ ] SerpApi account, key into `.env`
-- [ ] **Resolve A-03:** can SerpApi take uploaded bytes, or is a public image URL required? (`design.md` §2.3). This is the main unknown in the open-web path
+Now our **only** open-web provider after D-17 removed the commercial face-search APIs. If this phase fails, the "search the web" requirement rests entirely on a corpus we built ourselves, which is a materially weaker claim.
+
+- [x] SerpApi account, key into `.env` — **done by owner 5 Sep 2026**, key present. Not yet used by any code.
+- [ ] **Resolve A-07 FIRST, before writing the provider:** do Lens results for a public figure actually include social-media pages that survive the domain allowlist? Spend one manual query on this. If Lens returns only news and stock photography, reconsider the approach before spending 3 hours on it.
+- [ ] **Resolve A-03:** can SerpApi take uploaded bytes, or is a public image URL required? (`design.md` §2.3)
 - [ ] `search/google_lens.py` — parse `visual_matches[]` → `Candidate`
 - [ ] R-04 caching **wired before the first live call**, not after
 - [ ] Write raw responses to `runs/<id>/raw/google_lens.json`

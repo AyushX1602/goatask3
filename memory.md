@@ -4,8 +4,8 @@ Living state file. Read this first when resuming work.
 
 `phases.md` is the plan. **This is the state.** Update it at every phase boundary and whenever an assumption gets verified or a decision gets made.
 
-**Last updated:** 5 September 2026
-**Current phase:** STOPPED per owner instruction — scanning interface complete, before blockchain (Phase 9/10)
+**Last updated:** 5 September 2026 (architecture revised — awaiting owner verification before any coding)
+**Current phase:** PLANNING REVISED. Awaiting owner sign-off, then Phase 5a.
 **Overall:** Phases 0-2 + 4a (local demo UI) complete. Phases 3 (full Bluesky crawl loop as CLI command) and 5-8 (Lens, hardening, calibration) NOT done — the demo UI's server.py inlines a minimal crawl+search+verify loop directly rather than going through a finished Phase 3/4 CLI command. This is a known shortcut, see "What's NOT done" below.
 
 ---
@@ -51,7 +51,25 @@ Phase 0 complete and committed (`26744c4`). Starting Phase 1.
 - No standalone `python -m pipeline crawl`/`search`/`run-all` CLI commands (Phase 3-4 as originally scoped) — the demo UI's `server.py` inlines a minimal version of that loop directly rather than calling a finished CLI pipeline function. This works today but is technical debt: if Phase 3/4 are built properly later, `server.py`'s inlined crawl-and-score block should be refactored to call that shared function instead of duplicating it.
 - No evidence bundle, no chain code, no C2PA, no OpenTimestamps (Phases 9-11) — **deliberately stopped here per owner instruction.**
 
-**Next action:** awaiting owner's go-ahead to resume. Two reasonable next steps depending on direction: (a) proper Phase 3/4 CLI commands + Phase 5 Google Lens to broaden search before touching chain code, or (b) proceed to Phase 9/10 blockchain work now that the scanning interface is demonstrated. Do not start either without explicit instruction — the owner was specific about stopping here.
+**Next action — awaiting owner verification of the revised plan. No coding until then.**
+
+When approved, the order is fixed and non-negotiable:
+
+1. **Phase 5a** — `cache/http_cache.py` FIRST (protects the ~100/mo SerpApi quota), then resolve A-03 (how to submit a local image to SerpApi), then `search/web_detect.py`
+2. **Phase 5b** — quality gate + candidate verification loop
+3. **Phase 5c** — image upload input
+4. **Phase 5d** — UI correctness pass, then **STOP** for verification again
+
+Phase 5e (calibration) and 5f (GCV backend) follow after. Blockchain (Phases 9-11) remains untouched and unauthorised.
+
+### What the owner should check in this revision
+
+- `architecture.md` §2 (revised data flow), §2a (measured quality gates), §5 stack table + the "Rejected: per-platform API layer" note
+- `design.md` §1.6 (3-state liveness), §1.7 (quality gate), §2.1a (web detection provider), §3.1 score-band table
+- `prd.md` G9-G11, S14-S18, and the rewritten limitations list
+- `rules.md` R-21, R-22, and the revised cut order
+- `phases.md` — the whole REVISED PLAN block, and Phase 3b being cancelled
+- `memory.md` D-21..D-24 and §3a (all measured numbers)
 
 ---
 
@@ -95,6 +113,101 @@ Each entry: what, why, and what it costs us.
 | D-12 | Custom contract, not EAS | Shows contract authorship; EAS cited as the production path in README | Slightly more code than an EAS attestation |
 | D-13 | **Reject PimEyes / Yandex scraping** | ToS violation + Yandex returns captcha pages as HTTP 200 → silent mid-demo failure | Lower open-web recall than a true face index. Correct call regardless |
 | D-14 | FaceCheck.ID and Search4Faces disabled by default | Crypto-only prepayment / unverified freshness. A judge must be able to run the repo | Lower recall on the opt-in paths |
+| **D-17** | **Commercial face-search APIs removed entirely** (superseded D-14) | Owner checked: not free. Confirmed by research — the 2026 market gates **source URLs** behind paid tiers (FaceSeek: 10 tokens/search; FaceSearchAI: "source URLs unlock on any paid plan"). A source URL is the one field we need, so even a free tier is useless here. FaceCheck.ID is ~$0.30/search, crypto-only. | Reduces open-web redundancy |
+| **D-18** | **Azure / Bing Visual Search provider removed** | **Microsoft retired the Bing Search APIs on 11 Aug 2025**, explicitly including Bing Visual Search. Decommissioned, no new signups — it has not existed for over a year. `bing_visual.py` was planned against a dead product. Azure AI Vision (F0, 5,000 tx/mo free) still exists but does image *analysis* (tagging/OCR/object detection), **not** reverse image search, so it cannot answer "where else does this face appear" — wrong tool, free tier irrelevant. | **Google Lens via SerpApi is now the ONLY open-web provider. Zero redundancy on the brief's core requirement.** See §4a. |
+| **D-19** | **Image upload added as a first-class input mode, alongside webcam** | The PS says "Detect and encode a face from an **input image**" — it never requires a live person. Liveness was our own addition, not a requirement. More importantly, upload is **necessary**: the Google Lens route only works on a public figure with heavy web presence, and you cannot produce a public figure via webcam. Without upload the entire open-web path is untestable. | Liveness becomes inapplicable on the upload path and must not claim otherwise — see D-20 |
+| **D-20** | **Liveness gets three states, not two** | An anti-spoof model detects print/replay artifacts in a *camera capture*. A clean uploaded JPEG of a real person will likely score "live" while proving nothing about physical presence. Displaying `LIVE` for an upload would be a **false assurance**. | `webcam+pass -> LIVE`, `webcam+fail -> SPOOF (blocks)`, `upload -> N/A, provenance unverified` (neutral, never green). Mirrors the asymmetry already documented for candidate images in design.md 1.6. |
+| **D-21** | **Web detection is the single primary search path. The per-platform API layer is dropped.** | Proven live: one Lens call on one face returned links on instagram, facebook, youtube, x AND reddit (11 of 68 links social). Google already crawled those platforms, so we inherit the reach for one integration. The per-platform alternative was built as a probe and worked (best 0.7506 on a real Bluesky post) but covers strictly fewer platforms — X/Instagram/Facebook/TikTok have **no free search API at all** — for N× the integration cost, and adds an identity-extraction failure mode. | Verification happens against the search engine's cached thumbnail rather than the platform's live image. Disclosed in prd.md limitation 3 and recorded per-candidate in the evidence bundle. |
+| **D-22** | **Google Cloud Vision `WEB_DETECTION` added as a second backend behind the same provider** | Official first-party Google API, **1,000 free units/month vs SerpApi's ~100**. Same job, same `Candidate` output. Gives quota headroom and removes single-vendor risk. | Requires a GCP account (card for verification, not charged in free tier). SerpApi stays the default because it is already working and needs nothing from the owner. |
+| **D-23** | **Quality gates set from measurement: min face 50 px, no blur gate** | Measured embedding stability directly (`scripts/probe_accuracy.py`): cosine self-similarity holds ≥0.95 down to 43 px then collapses (0.868 @ 31 px, 0.767 @ 20 px). Blur was the opposite of expected — still 0.904 under a 31-px gaussian kernel, so a blur gate would add cost for nothing. | Very small faces in group photos are rejected rather than scored. Correct: their embeddings are unreliable. |
+| **D-24** | **Score-band presentation rules (R-21)** | The "engine showed me random female faces" report was **not an engine fault**. Those scores were 0.157/0.132/0.111; measured true non-match ceiling is 0.074 with mean+4σ = 0.193, versus 0.765 same-person. The engine correctly returned `NO_MATCH`. The UI listed 20 nearest neighbours as a ranked table, which reads as suggestions. | Fixing presentation, not the model. Noise-band scores never render as ranked suggestions. |
+
+---
+
+## 3b. SCOPE RESET — 5 Sep 2026, approved by owner
+
+An external review flagged that this is **HH Goa 2026 Shortlisting Task 3** — a screening gate, not a hackathon final. The plan had been built for a 3-day final: 14 phases, 7 cross-referenced docs, a decision log to D-24, ROC calibration, dual-chain anchoring, C2PA. That is misallocated for a task whose literal ask is four bullets. Several corrections were accepted; one recommendation was rejected with reasons. All decisions below are **owner-approved**.
+
+| # | Decision | Rationale | Trade-off |
+|---|---|---|---|
+| **D-25** | **Keep local ArcFace. Reject the proposed AWS Rekognition swap.** | Two concrete reasons — note that "our model is more explainable" is **not** one of them, because `w600k_r50` is a pretrained checkpoint we did not train, so it is the same category of trust as an API call. The real reasons: **(1) Reproducibility with no third-party account** — Rekognition would be unavoidable on *every* run, so a judge cloning the repo would need their own AWS account for Stage 1 *plus* a GCV/SerpApi key for Stage 2. Two paid-cloud gates instead of one. Local ArcFace means Stage 1 runs for anyone, no account. **(2) Single-take recording risk** — `CompareFaces` is one call per candidate; a 25-candidate run is 25 round trips against low default per-account TPS quotas, and raising them is a support ticket, not a toggle. Local is ~48 ms/embed, measured, offline. | Face stage stays our own code to maintain. Already built, tested, and committed, so this costs nothing now. |
+| **D-26** | **Salted face commitment stays; R-01 unchanged** | The review's "Rekognition means nothing biometric to protect" claim was withdrawn as stated backwards: sending a face to Amazon is a *larger* privacy surface than computing an embedding locally and never transmitting the image. "We never send your face anywhere" is the stronger claim. We have a real embedding, so R-01 applies exactly as designed. | None |
+| **D-27** | **Anvil (local Foundry chain) is the required chain. Base Sepolia is an optional bonus.** | The brief says in plain text "or a **local/simulated chain**". D-09..D-11 spent real effort choosing a testnet to solve a problem the brief had already waived. Anvil has zero faucet, RPC, or network-deprecation risk — the demo cannot fail on something outside our control. | No public explorer link unless the bonus gets built. Worth ~30 min if time remains, purely for the on-camera visual. |
+| **D-28** | **GCV `WEB_DETECTION` is the primary search backend; SerpApi Lens is secondary.** Reverses the previous ordering. | Two decisive facts my own D-22 recorded and my phase ordering then ignored (sunk-cost reasoning, since SerpApi already worked): **1,000/mo free vs ~100/mo**, and **GCV accepts raw base64**, which resolves A-03 outright. | Needs a GCP project with billing attached (free tier does not charge). Mitigated by D-30. |
+| **D-29** | **Cut C2PA, OpenTimestamps, dual-chain anchoring, and full ROC calibration from scope.** | None are required by the brief. Ship `0.42` as a **documented, measured default** justified by the observed 0.765-vs-0.074 separation, disclosed in the README as a default rather than a benchmark-calibrated figure. | Weaker than a published ROC. Honest disclosure covers it at this project's scale. |
+| **D-30** | **Build GCV against mocked/cached fixtures now; do not block on the billing-card decision.** | The request/response shapes are known from the docs. Wiring a real key later is a config change, not a rewrite. If the owner declines to attach a card, SerpApi runs primary instead — the orchestrator does not care which provider is first as long as one works. | GCV path stays unverified against the live API until a key exists. Tracked as A-08. |
+| **D-31** | **AWS is scoped to S3 presigned URLs only** | Legitimate right-sized use: SerpApi requires a publicly reachable image URL, and a short-expiry presigned GET (~600 s) solves that without leaving a copy of anyone's face permanently public. Plumbing, never the graded decision. | Only needed if the SerpApi secondary provider gets built. |
+| **D-32** | **Liveness code is kept but gets no further investment** | Already built and working (measured 0.9999 on a real photo). The brief never required it — it says "input image". Deleting working code saves nothing; extending it costs hours for no graded benefit. | Stays as a minor differentiator, mentioned in the README, not featured in the demo. |
+| **D-33** | **Seven planning docs collapse to one README front door; the rest move to `docs/`** | A screening reviewer skimming the repo wants the four things the brief asks for, not a design-doc suite to navigate. | The detail survives in `docs/` as appendices. |
+
+**Demo subject approved:** the public-domain Wikimedia portrait of Barack Obama, already used in the Lens probe. Public figure, maximal indexed footprint, so the search step is demonstrably genuine rather than a coin flip. Consistent with the "consented self-search, not surveillance" ethics position.
+
+**Resolved by D-28:** ~~A-03~~ — GCV accepts raw base64, so there is no public-URL problem on the primary path. It only returns if SerpApi is built, and D-31 handles it.
+
+---
+
+## 3a. Measured research evidence
+
+Numbers below are from probes actually executed, not estimates. Scripts kept in `scripts/` so they can be re-run.
+
+### Web detection reach — `scripts/probe_lens.py` (1 SerpApi credit, response cached)
+
+Probe: one public-figure face photo via `engine=google_lens`.
+
+```
+visual_matches:  59        organic_results: 9        related_content: 1
+related_content[0].query = "Barack Obama"        <- clean identity signal
+social links: 11 of 68  ->  facebook, instagram, youtube, x, reddit
+example real post URLs returned:
+  instagram.com/p/Dc1RWQ9DhXe/
+  reddit.com/r/Presidents/comments/1vewo5f/...
+  x.com/SLOTUS/status/2093690076098130142
+```
+
+Also confirmed: results contain clear noise (an unrelated Trump video, an unrelated Usha Vance post). **This is why local re-verification is mandatory** — it is the difference between a search wrapper and a face-match pipeline.
+
+### Per-platform route — `scripts/probe_identity_route.py` (validated, then descoped per D-21)
+
+```
+searchActors("Barack Obama")   -> 4 real accounts, genuine one ranked first
+getAuthorFeed                  -> 19 images across 60 posts
+our ArcFace scored 14 images   -> 10 above threshold
+best 0.7506  on a real post dated 2026-06-18
+separation: 0.5187 -> then a cliff to 0.1664, 0.0638, 0.0175, -0.0831
+           (the low scores are OTHER people in the same group photos)
+```
+
+Plumbing works and is kept for reference. Not the primary path.
+
+### Accuracy levers — `scripts/probe_accuracy.py`
+
+Face size vs self-similarity (same photo downscaled):
+
+| face px | 232 | 174 | 119 | 87 | 61 | 43 | 31 | 20 |
+|---|---|---|---|---|---|---|---|---|
+| cosine | 1.000 | 0.972 | 0.971 | 0.970 | 0.962 | 0.954 | 0.868 | 0.767 |
+
+Blur vs self-similarity: 0.984 @ k=3, 0.974 @ k=13, **0.904 @ k=31**. Far more robust than assumed; no gate needed.
+
+True non-match distribution (9 confirmed different people):
+
+```
+max 0.0738   mean -0.0241   std 0.0543   mean+4*std = 0.1930
+same-person reference = 0.7652
+```
+
+### API availability (verified 5 Sep 2026)
+
+| Service | Free tier | Note |
+|---|---|---|
+| SerpApi Google Lens | ~100/mo | working today, key present |
+| Google Cloud Vision `WEB_DETECTION` | 1,000/mo | official; needs GCP account |
+| Bluesky AT Protocol | unlimited, no auth | `searchActors`, `getAuthorFeed`, `getFeed` all confirmed open; `searchPosts` returns **403** |
+| Mastodon | no auth | account search works with a User-Agent header; `only_media` on public timeline returned **422** |
+| GitHub REST | 60/hr anon, 5,000/hr with free PAT | user search + avatars public |
+| **X / Twitter** | **none** | pay-per-use since Feb 2026, ~$0.005/post read |
+| Instagram / Facebook / TikTok / LinkedIn | none | no public search API — indexed links only |
+| Bing Visual Search | **dead** | retired by Microsoft 11 Aug 2025 |
 | D-15 | Salted commitment, never raw embeddings on chain | GDPR Art. 9 / DPDP Act; immutable ledger + biometric template is un-deletable | Cannot compare faces directly from chain data. That is the point |
 | D-16 | `rich` console output treated as a deliverable | The recording *is* the submission; legibility at 1080p matters | Minor extra work |
 
@@ -112,6 +225,11 @@ Tracked from `design.md`'s `[A]` markers. **Verify before starting the dependent
 | A-04 | `w600k_r50.onnx` has a dynamic batch axis, so batches of 32 work | Phase 3 | unverified — fall back to a loop if fixed |
 | A-05 | CPU inference is fast enough for a 2000-post crawl | Phase 3 | unverified — measure in Phase 1 |
 | A-06 | Demo subject for the open-web path is indexed well enough for Lens | Phase 5 | unresolved, ties to Q1 |
+| ~~A-07~~ | ~~Lens results include social-media pages~~ | — | **RESOLVED 5 Sep 2026 — confirmed true.** 11 of 68 links were on social domains (facebook, instagram, youtube, x, reddit) with real post URLs. See §3a. |
+| ~~A-04~~ | ~~dynamic batch axis~~ | — | RESOLVED: `input.1: [None,3,112,112]`, confirmed via onnxruntime introspection |
+| ~~A-01 / A-02~~ | ~~Bluesky endpoints and image URLs~~ | — | RESOLVED live; API returns ready-made `thumb`/`fullsize` URLs |
+| **A-03** | **How to submit a local probe image to SerpApi** — it needs a publicly reachable URL, and our probe is a local webcam frame or uploaded file | **Phase 5a** | **UNRESOLVED. Now the last significant unknown, and it gates the critical phase.** Options: temporary public upload host, or a SerpApi file-upload endpoint if one exists. The GCV backend takes raw base64 and sidesteps this entirely, which is a further argument for D-22. |
+| **A-08** | GCV `WEB_DETECTION` returns image-URL arrays, not just `webEntities` | Phase 5f | Unverified. Known failure mode in the wild — treat empty arrays as a valid zero-candidate result |
 
 ### Verified facts worth not re-researching
 
@@ -143,6 +261,33 @@ Tracked from `design.md`'s `[A]` markers. **Verify before starting the dependent
 | Q5 | CUDA for onnxruntime, or stay CPU? | Phase 3 | decide after Phase 1 timing |
 
 ---
+
+## 5a. RESOLVED — the MATCH-demo gap
+
+Recorded 5 Sep 2026, **resolved the same day by D-21**. Kept because the diagnosis is still the clearest explanation of a confusing symptom.
+
+**Resolution:** web detection returns real social posts across many platforms without us choosing where to look, so a MATCH on a public figure is reachable through the ordinary path. The "scoped crawl / seed handles" workaround (old Phase 3b) is cancelled, along with the honesty problem it carried.
+
+**Symptom.** A real webcam scan produced `det_score 0.951`, `liveness LIVE 0.991`, verdict `NO_MATCH`. All three are correct and mutually consistent — they measure different things:
+
+| Number | Question it answers | Verdict |
+|---|---|---|
+| `det_score 0.951` | "Is there a face in this frame?" | correct, high |
+| `liveness 0.991` | "Is it a live face, not a printed photo?" | correct, live |
+| `NO_MATCH` | "Does this face appear in the corpus we searched?" | correct — it genuinely does not |
+
+The owner's face is not in a random 300-post crawl of Bluesky's `whats-hot` feed, so `NO_MATCH` is the honest, correct output (R-16 treats this as a first-class outcome).
+
+**The actual problem.** With the corpus sourced only from a random public feed, the pipeline will return `NO_MATCH` for *every* face we can actually test with. There is currently **no planned path to demonstrate a successful MATCH on camera.** A recording that only ever shows "no match" does not demonstrate a working pipeline. The plan needs both outcomes.
+
+**Root cause in code.** Three related gaps, all real:
+1. `config.bluesky_seed_handles` exists and parses `BLUESKY_SEED_HANDLES`, but **nothing reads it.** Dead config.
+2. `bluesky.py` only calls `getFeed` (public feed generators). `getAuthorFeed` is named in a docstring but never invoked — so there is no way to crawl a *specific account*.
+3. `webapp/server.py` hardcodes `BlueskyProvider(crawl_limit=300)`, ignoring `config.bluesky_crawl_limit` (2000).
+
+**Actual fix (D-21).** Probe a **public figure via an uploaded image**, and web detection returns real social posts we then verify locally. Nothing is scoped, seeded, or hand-picked: the platforms come from Google's index, the candidates come from its response, and the winner comes from our own ArcFace score. This is why image upload became a required input mode (D-19) rather than a convenience — you cannot put a public figure in front of your webcam.
+
+The demo therefore shows both outcomes from one code path: a public-figure probe gives `MATCH` with a real post URL, and the owner's own face gives a correct `NO_MATCH`.
 
 ## 6. Gotchas discovered
 

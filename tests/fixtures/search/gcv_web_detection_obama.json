@@ -1,0 +1,74 @@
+{
+  "_fixture_note": "Constructed from the documented WEB_DETECTION schema. No GCV key available at authoring time (D-30). Shapes match the reference docs.",
+  "responses": [
+    {
+      "webDetection": {
+        "webEntities": [
+          {
+            "entityId": "/m/02mjmr",
+            "score": 0.921,
+            "description": "Barack Obama"
+          },
+          {
+            "entityId": "/m/07t65",
+            "score": 0.402,
+            "description": "President"
+          },
+          {
+            "entityId": "/m/0d075m",
+            "score": 0.311
+          }
+        ],
+        "bestGuessLabels": [
+          {
+            "label": "barack obama",
+            "languageCode": "en"
+          }
+        ],
+        "pagesWithMatchingImages": [
+          {
+            "url": "https://www.instagram.com/p/Dc1RWQ9DhXe/",
+            "pageTitle": "A post shared on Instagram",
+            "fullMatchingImages": [
+              {
+                "url": "https://scontent.cdninstagram.com/v/example_full.jpg"
+              }
+            ]
+          },
+          {
+            "url": "https://www.reddit.com/r/Presidents/comments/1vewo5f/example/",
+            "pageTitle": "Discussion thread",
+            "partialMatchingImages": [
+              {
+                "url": "https://preview.redd.it/example_partial.jpg"
+              }
+            ]
+          },
+          {
+            "url": "https://en.wikipedia.org/wiki/Barack_Obama",
+            "pageTitle": "Barack Obama - Wikipedia"
+          },
+          {
+            "url": "https://www.britannica.com/biography/Barack-Obama",
+            "pageTitle": "Barack Obama | Britannica",
+            "fullMatchingImages": [
+              {
+                "url": "https://cdn.britannica.com/example.jpg"
+              }
+            ]
+          }
+        ],
+        "fullMatchingImages": [
+          {
+            "url": "https://upload.wikimedia.org/wikipedia/commons/8/8d/President_Barack_Obama.jpg"
+          }
+        ],
+        "visuallySimilarImages": [
+          {
+            "url": "https://example.test/similar_but_different_person.jpg"
+          }
+        ]
+      }
+    }
+  ]
+}

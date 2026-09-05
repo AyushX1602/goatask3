@@ -1,0 +1,166 @@
+{
+  "_fixture_note": "Trimmed from a real SerpApi google_lens response captured 2026-09-05. Field shapes unmodified.",
+  "related_content": [
+    {
+      "query": "Barack Obama"
+    }
+  ],
+  "visual_matches": [
+    {
+      "position": 11,
+      "title": "Barack Obama's official presidential portrait",
+      "link": "https://www.facebook.com/groups/obama.lovers.barack.michelle.malia.sasha.obama/posts/1670484947345574/",
+      "source": "Facebook",
+      "thumbnail": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQ3DPIqtgLvpuNS7y6moU_guYTV-hR4m3gQJr0Bp2yZCffoiYfS",
+      "image": "https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=122234910728064289"
+    },
+    {
+      "position": 27,
+      "title": "YOU HEARD THE GUY \u2014 get up and DO something \ud83d\udc99 After all ...",
+      "link": "https://www.instagram.com/p/Dc1RWQ9DhXe/",
+      "source": "Instagram",
+      "thumbnail": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRGNnloDja_9SACcxWQv7CjApjs2z-8RsU0NGLp54V4IIyg4PxY",
+      "image": "https://lookaside.instagram.com/seo/google_widget/crawler/?media_id=3975993255707343026"
+    },
+    {
+      "position": 30,
+      "title": "Today America Celebrates Obama Appreciation Day and the ...",
+      "link": "https://www.facebook.com/reallyamerican/posts/today-america-celebrates-obama-appreciation-day-and-the-internet-is-flooded-with/1495994005902398/",
+      "source": "Facebook",
+      "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTpV1IbeUbjZMsB49ZApCsg-LkzwZvT7-agy-BgfNIB_DDQjLyE",
+      "image": "https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=1305627878400417"
+    },
+    {
+      "position": 37,
+      "title": "Is Barack Obama your favorite President? Well here are his ...",
+      "link": "https://www.instagram.com/reel/Dc344ffu8xS/",
+      "source": "Instagram",
+      "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRdSMK6-b7CcCCQk06LH_nyJyLBcg0887gdgFMalWmuXvavIY5c",
+      "image": "https://lookaside.instagram.com/seo/google_widget/crawler/?media_id=3963889860620466244"
+    },
+    {
+      "position": 38,
+      "title": "On the grounds of the Obama Presidential Center recently ...",
+      "link": "https://www.facebook.com/obamafoundation/posts/on-the-grounds-of-the-obama-presidential-center-recently-some-of-our-visitors-ta/1642370437250864/",
+      "source": "Facebook",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcR9Ysh5YL8VPeWU25hhDC9fXjDkOl8RQIBgfwZU-UAq2OszKpI3",
+      "image": "https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=4449032212033891"
+    },
+    {
+      "position": 41,
+      "title": "President Trump Participates in a Rose Garden Dinner ...",
+      "link": "https://www.youtube.com/watch?v=_jxSpQiknyQ",
+      "source": "YouTube",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcRww0F2QHoGKUEgvZLD3cKlBKZZoPW_fmK6JeFo749vA42TJ0Sh",
+      "image": "https://i.ytimg.com/vi/_jxSpQiknyQ/maxresdefault.jpg"
+    },
+    {
+      "position": 47,
+      "title": "Second Lady Usha Vance on X: \"Submit your Summer Reading ...",
+      "link": "https://x.com/SLOTUS/status/2093690076098130142",
+      "source": "x.com",
+      "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTg3xzxFdlx_Pclfoz7Rd1Yvi1TTsB58U0F_Of3TM1ghxGirsZl",
+      "image": "https://pbs.twimg.com/profile_images/1899136582528958464/Kj200Yfz_400x400.jpg"
+    },
+    {
+      "position": 50,
+      "title": "Barack Obama's Deadpan Humor Makes Celebrities BURST Out ...",
+      "link": "https://www.youtube.com/watch?v=bCvJhDE7kOA",
+      "source": "YouTube",
+      "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQMeI3OP571uEas3ztZjwDH4k5rfTmXiA84nfdEO_rZpM6VlKLk",
+      "image": "https://i.ytimg.com/vi/qWnLamjA_Qk/hq720.jpg?sqp=-oaymwEhCK4FEIIDSFryq4qpAxMIARUAAAAAGAElAADIQj0AgKJD&rs=AOn4CLC-TGefJCjlPb7FBRWhRMRSlnkvTg"
+    },
+    {
+      "position": 1,
+      "title": "File:President Barack Obama.jpg - Wikimedia Commons",
+      "link": "https://commons.wikimedia.org/wiki/File:President_Barack_Obama.jpg",
+      "source": "Wikimedia Commons",
+      "thumbnail": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcTDLvwXFOwhHjef4jDTOGLyhZcVyObf393e_CZpV8jpLM7Mwijq",
+      "image": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/President_Barack_Obama.jpg/1920px-President_Barack_Obama.jpg?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=thumbnail"
+    },
+    {
+      "position": 2,
+      "title": "President Barack Obama in Portrait print by Everett ...",
+      "link": "https://www.posterlounge.com/p/623159.html",
+      "source": "Posterlounge",
+      "thumbnail": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQ3OngANbssWfSE3qzLF8ficPi_L0mlg3xvU7DDY8o14OR5U6x8",
+      "image": "https://media.posterlounge.com/img/products/630000/623159/623159_poster.jpg"
+    },
+    {
+      "position": 3,
+      "title": "Barack Obama | Biography, Parents, Education, Presidency ...",
+      "link": "https://www.britannica.com/biography/Barack-Obama",
+      "source": "Britannica",
+      "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQK_YNKkqGDTqqklVXch-jULmo8YeNpJ0hqk6PcliDe3ih3BRE4",
+      "image": "https://cdn.britannica.com/89/164789-050-D6B5E2C7/Barack-Obama-2012.jpg"
+    },
+    {
+      "position": 4,
+      "title": "5x7 President Barack Obama Official PHOTO Portrait White ...",
+      "link": "https://www.etsy.com/listing/734057108/5x7-president-barack-obama-official",
+      "source": "Etsy",
+      "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTlMByY7RBLOS7DaS71JKY7QJA34Og0xGir37NouRfPtdDisgtf",
+      "image": "https://i.etsystatic.com/20862972/r/il/c44498/2107538843/il_1080xN.2107538843_2ul5.jpg"
+    },
+    {
+      "position": 5,
+      "title": "Barack Obama Photograph in a Black Beveled Frame ...",
+      "link": "https://congresobicentenario.gloriososancarlos.edu.pe/listing/barack-obama-photograph-in-a-black-beveled-frame-historical?srsltid=208530124",
+      "source": "congresobicentenario.gloriososancarlos.edu.pe",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQaWKiDlwRLLbEOpzDb1PrU0-taBRhzA0SaDNBr2viLr-XMlv9a",
+      "image": "https://m.media-amazon.com/images/I/81iHhxuYfLL._AC_SL1500_.jpg"
+    },
+    {
+      "position": 6,
+      "title": "Artery8 Souza Portrait US President Barack Obama Photo ...",
+      "link": "https://www.amazon.ae/Artery8-Portrait-President-Barack-Picture/dp/B07VPK4JZL",
+      "source": "Amazon.ae",
+      "thumbnail": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRwiZVC4mH3hHXf5UbPe7Yp2587S8KbyrS-1Q0YKir7hNAOj0o8",
+      "image": "https://m.media-amazon.com/images/I/710Br5mRkYL._AC_UF350,350_QL80_.jpg"
+    }
+  ],
+  "organic_results": [
+    {
+      "position": 3,
+      "title": "Barack Hussein Obama II, the 44th president of the United ...",
+      "link": "https://www.instagram.com/p/DU0rNQ5jEVi/",
+      "source": "Instagram \u00b7 delegateheatherbagnall",
+      "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQlNL_fGlVwvl7TUbLRxWt6tDVAjmh7G989OBUSAAIwjnGkSxJx7SeD&usqp=CAE&s"
+    },
+    {
+      "position": 7,
+      "title": "As Obama's birthday is tomorrow. What do you think of him?",
+      "link": "https://www.reddit.com/r/Presidents/comments/1vewo5f/as_obamas_birthday_is_tomorrow_what_do_you_think/",
+      "source": "Reddit \u00b7 r/Presidents",
+      "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR71Zv82IPkQAxkr90nTKR0kM1BFronekQhTsNfb4UGD_37N3-vR0nQ&usqp=CAE&s"
+    },
+    {
+      "position": 8,
+      "title": "The photo taken by Pete Souza shows the civil rights ...",
+      "link": "https://www.facebook.com/HuffPost/posts/the-photo-taken-by-pete-souza-shows-the-civil-rights-leader-crying-watching-obam/1279440697373103/",
+      "source": "Facebook \u00b7 HuffPost",
+      "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS2mVvO2YcBhYJMGNY8VIkFpx-CmlBb72zBKxvmG1iWWHk3gGHRIEs1&usqp=CAE&s"
+    },
+    {
+      "position": 1,
+      "title": "Barack Obama",
+      "link": "https://en.wikipedia.org/wiki/Barack_Obama",
+      "source": "Wikipedia",
+      "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQIIFGBkUS0RLF6Jr6-spUXOh-rLAHePksbDdE7Vvlz20uEJRhZUy9p&usqp=CAE&s"
+    },
+    {
+      "position": 2,
+      "title": "Barack Obama",
+      "link": "https://www.whitehousehistory.org/bios/barack-obama",
+      "source": "White House Historical Association",
+      "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRDx9j50u9lA-Kr7QuIjDu1y8Nt1L6h181CIbLt8_BbcnAbWFpKK35d&usqp=CAE&s"
+    },
+    {
+      "position": 3,
+      "title": "Barack Hussein Obama II, the 44th president of the United ...",
+      "link": "https://www.instagram.com/p/DU0rNQ5jEVi/",
+      "source": "Instagram \u00b7 delegateheatherbagnall",
+      "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQlNL_fGlVwvl7TUbLRxWt6tDVAjmh7G989OBUSAAIwjnGkSxJx7SeD&usqp=CAE&s"
+    }
+  ]
+}

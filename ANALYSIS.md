@@ -2,8 +2,31 @@
 ## Deep analysis, architecture options, and final decision
 
 **Document date:** 4 September 2026
-**Status:** pre-build analysis. No code written yet. Workspace is greenfield.
+**Status:** HISTORICAL DECISION RECORD — partially superseded. See the amendment below.
 **Purpose:** decide the architecture before burning hackathon hours, and record why every rejected option was rejected.
+
+---
+
+> ### ⚠ AMENDED 5 September 2026 — read this before trusting §2.2 or §3
+>
+> This document is kept unedited as the original reasoning. Four of its
+> search-layer conclusions turned out to be **wrong or unavailable**, found by
+> live verification rather than desk research. Current truth lives in
+> `architecture.md`, `design.md`, and `memory.md` §3a (measured evidence) and
+> D-17..D-24 (decision log).
+>
+> | This doc says | Actual status |
+> |---|---|
+> | Bing Visual Search — "free tier, good, secondary redundancy" | **Does not exist.** Microsoft retired the Bing Search APIs on 11 Aug 2025 (D-18) |
+> | FaceCheck.ID / Search4Faces — "optional, off by default" | **Removed.** The 2026 market paywalls *source URLs*, the one field we need (D-17) |
+> | Google Lens is one provider among several | **It is the single primary path.** One call reaches every platform Google indexed — proven live: instagram, facebook, youtube, x, reddit (D-21) |
+> | Bluesky is a first-class fallback provider with FAISS + a 2000-post crawl | **Demoted to a keyless demo aid.** No FAISS, no large crawl. It searches a corpus we build, so it is not an answer to "search the web" |
+>
+> Also added since: image upload as a required input mode (D-19), 3-state
+> liveness (D-20), measurement-derived quality gates (D-23), and score-band
+> presentation rules (D-24).
+>
+> The blockchain analysis in §2.3–§2.4 and §6 is **unaffected and still current.**
 
 ---
 
