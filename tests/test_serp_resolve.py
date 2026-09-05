@@ -394,3 +394,63 @@ def test_instagram_reserved_words_rejected(monkeypatch):
 
     owner = post_owner("https://www.instagram.com/p/C_123456789/", http)
     assert owner is None
+
+
+def test_instagram_missing_or_malformed_serp_returns_none(monkeypatch):
+    """Missing or malformed SERP response returns None safely (R-14)."""
+    monkeypatch.setenv("SERPAPI_KEY", "test-key")
+
+    assert post_owner("https://www.instagram.com/p/C_123456789/", MockSerpHttp({}, status_code=500)) is None
+    assert post_owner("https://www.instagram.com/p/C_123456789/", MockSerpHttp({}, raises=True)) is None
+    assert post_owner("https://www.instagram.com/p/C_123456789/", MockSerpHttp({"organic_results": "not-a-list"})) is None
+    assert post_owner("", MockSerpHttp({})) is None
+    assert post_owner("https://x.com/not_instagram", MockSerpHttp({})) is None
+
+
+def test_web_detect_synthesizes_instagram_owner_profile(monkeypatch):
+    """WebDetectProvider synthesizes instagram profile from post URL via SERP recovery, capped at 1 call."""
+    from pipeline.search.web_detect import WebDetectProvider
+    import numpy as np
+
+    monkeypatch.setenv("SERPAPI_KEY", "test-key")
+    monkeypatch.setenv("GCV_API_KEY", "test-key")
+
+    mock_resp = {
+        "organic_results": [
+            {
+                "link": "https://www.instagram.com/p/POST_ONE/",
+                "title": "Jane Doe (@janedoe) on Instagram: 'Photo'",
+            }
+        ]
+    }
+    http = MockSerpHttp(mock_resp)
+
+    provider = WebDetectProvider(http=http)
+    monkeypatch.setattr(provider, "backend", "gcv")
+
+    # Mock _search_gcv to return candidates with Instagram post URLs
+    raw_candidates = [
+        Candidate(
+            image_url="https://example.com/ig1.jpg",
+            page_url="https://www.instagram.com/p/POST_ONE/",
+            source="gcv_web_detection",
+        ),
+        Candidate(
+            image_url="https://example.com/ig2.jpg",
+            page_url="https://www.instagram.com/p/POST_TWO/",
+            source="gcv_web_detection",
+        ),
+    ]
+    monkeypatch.setattr(provider, "_search_gcv", lambda b: (list(raw_candidates), ["Test Signal"]))
+
+    results = provider.search(b"dummy-image", np.zeros(512))
+
+    # At most 1 SERP call should have been made
+    assert len(http.calls) == 1
+    # Synthesized profile candidate should be present with origin="linked"
+    ig_profiles = [c for c in results if c.source == "serp_instagram"]
+    assert len(ig_profiles) == 1
+    assert ig_profiles[0].page_url == "https://www.instagram.com/janedoe"
+    assert ig_profiles[0].origin == "linked"
+    assert ig_profiles[0].image_url == ""
+

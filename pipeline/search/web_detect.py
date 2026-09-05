@@ -361,6 +361,45 @@ class WebDetectProvider:
         resp.raise_for_status()
         return parse_serpapi_lens(resp.json())
 
+    def _recover_instagram_owners(self, candidates: list[Candidate]) -> list[Candidate]:
+        """Item 3: Instagram owner recovery from SERP.
+
+        If a candidate's page_url is an Instagram post (/p/{shortcode}/) and its
+        owner is unknown, queries Google SERP to extract the post owner handle.
+        If recovered, synthesizes a profile candidate https://www.instagram.com/{owner}
+        with origin="linked".
+        Capped at at most 1 SERP call per web detection run.
+        """
+        from pipeline.search.serp_resolve import INSTAGRAM_POST_RE, post_owner
+
+        post_owner_calls = 0
+        synthesized: list[Candidate] = []
+        known_pages = {c.page_url for c in candidates if c.page_url}
+
+        for c in candidates:
+            if post_owner_calls >= 1:
+                break
+            if c.page_url and INSTAGRAM_POST_RE.search(c.page_url):
+                post_owner_calls += 1
+                try:
+                    owner = post_owner(c.page_url, self._http)
+                except Exception:
+                    owner = None
+                if owner:
+                    profile_url = f"https://www.instagram.com/{owner}"
+                    if profile_url not in known_pages:
+                        known_pages.add(profile_url)
+                        synthesized.append(
+                            Candidate(
+                                image_url="",
+                                page_url=profile_url,
+                                source="serp_instagram",
+                                origin="linked",
+                                match_kind="similar",
+                            )
+                        )
+        return synthesized
+
     # --- SearchProvider interface --------------------------------------
 
     def search(
@@ -385,6 +424,10 @@ class WebDetectProvider:
             candidates, signals = self._search_serpapi(public_image_url)
         else:
             return []
+
+        recovered_profiles = self._recover_instagram_owners(candidates)
+        if recovered_profiles:
+            candidates = candidates + recovered_profiles
 
         self.last_identity_signals = signals
         return candidates
