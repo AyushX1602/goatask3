@@ -561,22 +561,101 @@ Demo consequence: stamp a bundle the **day before** the recording so a `CONFIRME
 
 ### 5.4 Verifier — `chain/reverify.py`
 
-Four independent checks, each pass/fail on its own:
+**Revised 7 Sep 2026 (Tier 2).** The previous version of this section listed
+four checks, two of which (C2PA manifest, OpenTimestamps proof) were never
+built and are deferred (§9) — a doc-vs-code overclaim, now removed. It also
+described the integrity check in a way that concealed a real defect: see R-25.
 
-| # | Check | Failure meaning |
-|---|---|---|
-| 1 | Recomputed keccak256 equals the stored commitment | bundle was modified |
-| 2 | C2PA manifest signature valid (if present) | manifest tampered |
-| 3 | On-chain record exists and every field matches | not anchored, or fields altered |
-| 4 | OTS proof valid against a Bitcoin block | timestamp proof broken |
+Three independent checks. Each is pass/fail on its own, and each has a
+distinct failure meaning:
+
+| # | Check | Source of truth | Failure verdict |
+|---|---|---|---|
+| 1 | **Artifact digests** — recompute `sha256`/`phash` of every file the bundle references and compare against the digest recorded in the bundle | the files on disk | `ARTIFACT_MISMATCH`, or `ARTIFACT_MISSING` |
+| 2 | **Bundle integrity** — canonicalise the *rebuilt* bundle and compare keccak256 against the hash actually anchored (`anchor.json`) | `anchor.json` | `BUNDLE_MODIFIED` |
+| 3 | **On-chain record** — the contract holds that exact hash, and its fields match | an `eth_call` | `NOT_ANCHORED` |
+
+Check 1 is the one that was missing. Ordering matters: artifacts are checked
+*first*, because an artifact swap is a different and more interesting attack
+than a JSON edit, and reporting it as a generic "tampered" would lose that
+information.
 
 ```python
-def reverify(bundle_path: Path) -> ReverifyReport   # per-check results + overall
+def rebuild_from_artifacts(run_dir: Path) -> tuple[dict, list[ArtifactCheck]]
+    """Load the stored bundle, then OVERWRITE every recorded digest with one
+    recomputed from the corresponding file on disk. Returns the rebuilt
+    structure plus a per-artifact pass/fail list.
+
+    R-25: no stored digest is ever carried through. This is the function the
+    whole re-verification claim rests on."""
+
+def reverify_bundle(run_dir: Path, ...) -> ReverifyReport
 ```
 
-Exit code 0 only when every attempted check passes. Skipped checks (no CID, no `.ots`, no C2PA) are reported as `SKIPPED`, never silently as pass.
+Local disk plus one `eth_call`. **No hosted URL is ever re-fetched during
+verification** — not the candidate's platform image (it may 403, expire, or
+be deleted) and not a search-engine cache URL (those expire by design).
+Verification must keep working indefinitely and offline, with only the RPC
+reachable. This is deliberate and is why `match.verified_against` records
+what was scored at anchor time as a separate question from what the verifier
+checked.
 
-The tamper demo — change one character, re-run, see check 1 fail — is a **required deliverable**, not a nice-to-have (S9 in `prd.md`).
+Exit code 0 only when every attempted check passes.
+
+#### Verdict states
+
+| Verdict | Meaning | Exit |
+|---|---|---|
+| `PASS` | all three checks pass | 0 |
+| `ARTIFACT_MISMATCH` | a file's bytes no longer hash to the recorded digest | 1 |
+| `ARTIFACT_MISSING` | the bundle references a file that is not on disk | 1 |
+| `BUNDLE_MODIFIED` | rebuilt bundle hash ≠ the anchored hash | 1 |
+| `NOT_ANCHORED` | hash is self-consistent but was never anchored on this chain | 1 |
+| `ERROR` | unreadable file, malformed JSON, chain unreachable | 1 |
+
+`TAMPERED` is retired as a verdict string: it conflated an artifact swap with
+a bundle edit. Both are tampering; they are not the same tampering, and R-24's
+principle (a reason must describe what actually happened) applies to verifier
+output exactly as it applies to reject reasons.
+
+### 5.5 Tamper demonstration — three modes
+
+The tamper demo is a required deliverable (S9 in `prd.md`), and one button
+that flips one field demonstrates less than it appears to. Editing a field
+*inside* the bundle and observing the hash change proves keccak256 is
+deterministic — it does not prove the bundle commits to the evidence.
+
+Three modes, each a different attack, each producing a different verdict:
+
+| Mode | What it mutates | Proves | Expected verdict |
+|---|---|---|---|
+| `swap-artifact` | flips one bit in `match_image.jpg` | the bundle genuinely commits to the image bytes, not just to itself | `ARTIFACT_MISMATCH` |
+| `edit-bundle` | `match.score_bps` 9806 → 9999 | the on-chain hash pins the bundle's contents | `BUNDLE_MODIFIED` |
+| `forge-bundle` | builds a fresh, internally consistent, correctly-hashed bundle | consistency is not provenance — a valid hash that was never anchored is worthless | `NOT_ANCHORED` |
+
+Every mode operates on a **copied run directory in a temp path**. The real
+`runs/<id>/` is never written to, and a test asserts every file is
+byte-identical before and after. `swap-artifact` mutates the *source file* and
+lets the recomputed digest propagate up through `rebuild_from_artifacts` —
+mutating the digest field directly would be self-referential and a reviewer
+reading the code would rightly discount it.
+
+### 5.6 Artifact manifest
+
+For check 1 to be complete, the bundle must say which files it commits to.
+Schema v2 already records `match.image_sha256` and `match.image_phash` for
+`match_image.jpg`; v3 makes the mapping explicit rather than implied by
+convention, so the verifier iterates a list instead of hardcoding filenames:
+
+```jsonc
+"artifacts": [
+  {"path": "match_image.jpg", "sha256": "…", "phash": "a3f0c1…"}
+]
+```
+
+Additive and backward-compatible: a v2 bundle with no `artifacts` key falls
+back to the known `match_image.jpg` mapping, so the two committed sample runs
+keep verifying without being regenerated or hand-edited.
 
 ---
 

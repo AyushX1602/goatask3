@@ -1195,3 +1195,178 @@ further can be prepared without one of those three. The re-fetch verifier
 check (stale-image detection, distinct from the missing-image problem the
 resolver cascade solves) remains deprioritised and optional. G5
 (calibration) stays skipped per D-29.
+
+---
+
+## 3w. Source-level competitor review — two real defects found in OUR code
+
+7 Sep 2026. Owner supplied three more repos built for the same task and asked
+for honest comparison, then: "find flaws which we have and how to improve."
+Earlier comparisons in §3g were README-level. This pass read source. That
+difference mattered — the README pass found nothing wrong with us, and the
+source pass found a correctness defect and a security defect.
+
+Repos reviewed (source, via the GitHub trees/blobs API):
+`shaikmohammedyasin-create/face-evidence-blockchain` and
+`iamanirbanbasak/HHG-T3`, alongside the two from §3g.
+
+### DEFECT 1 — our verifier never checked the artifacts (now R-25)
+
+Reading `HHG-T3/src/facechain/verify.py`, whose docstring opens by naming the
+failure mode it defends against ("a verifier that loads the stored evidence
+hash for BOTH sides of the comparison"), prompted checking ours. Ours does not
+do that — but it does something adjacent and just as bad.
+
+`pipeline/chain/reverify.py` reads `evidence.json`, recomputes keccak256 over
+it, and compares to `anchor.json`. **Nothing recomputes `sha256(match_image.jpg)`
+and compares it to the recorded `match.image_sha256`.** So:
+
+> replacing `runs/<id>/match_image.jpg` with a completely different image
+> leaves the bundle JSON untouched, leaves its keccak untouched, and our
+> `verify` reports `PASS`.
+
+The recorded `image_sha256` describes bytes that are no longer on disk and
+nothing looks. Tier 0's entire argument for refusing to anchor a zero image
+hash was that the hash must *mean* something (see the owner's Correction 1,
+§3e); we made it real at anchor time and left it decorative at verify time.
+
+Their `rebuild_from_artifacts()` is the fix conceptually: deep-copy the stored
+bundle, overwrite every digest by recomputing from the source file, then hash.
+Adopted as T2.1 — the concept, written against our own schema and verdict
+model, credited here rather than copied.
+
+Consequence 2: **our tamper demo proved less than it looked like.** We edit
+`score_bps` inside the bundle and observe the hash change — that demonstrates
+keccak256 is deterministic. Their `_mutate_one_byte` flips a bit in a *source
+artifact* and lets the digest change propagate, with a docstring arguing that
+editing the digest field directly would be "a self-referential trick that a
+reviewer reading this code would rightly discount." That is an accurate
+description of ours. Fixed as T2.2, and expanded to three modes so the two
+attacks stay distinguishable.
+
+### DEFECT 2 — XSS in the candidate table (now R-26)
+
+`webapp/static/app.js`:
+
+```js
+const postCell = c.page_url
+  ? `<a href="${c.page_url}" target="_blank" rel="noopener">${c.page_url.replace("https://","")}</a>`
+  : "—";
+```
+
+`c.page_url` is search-provider data. It is interpolated unescaped into an
+`href` attribute *and* an element body; `${c.source}` and `${shortReason}` are
+also raw. A URL containing a double quote breaks the attribute. The tell that
+this is oversight not judgement: `escapeHtml()` already exists in the file and
+is applied to the `title` attribute on the same line as the unescaped
+`shortReason`.
+
+Practical severity is moderate-to-low (localhost, no credentials, needs a
+poisoned search index) but "an attacker would have to poison Google first" is
+luck, not a boundary we designed. HHG-T3 ships 22 KB of `test_web_security.py`
++ `test_web_xss.py`; we have zero tests in that category. Fixed as T2.3.
+
+### Recall features they have and we don't
+
+**Head crop as the search query** (`HHG-T3/face/headcrop.py`). Their measured
+finding: a probe of a person in a red kurta returned ~60 Lens results that
+were essentially all garment listings (eBay, Etsy, Manyavar, KALKI) — the
+engine decided the salient subject was the clothing and never tried the face.
+Their fix is a 512 px head crop, bbox grown 55% up / 30% side / 18% down
+(explicitly asymmetric, because downward growth adds collar and shoulders —
+the exact thing being excluded), soft elliptical mask, composited on neutral
+mid-grey, *not* white, because white biases engines toward catalogue imagery.
+
+This is a genuine gap in our evidence base, not just our code. D-34 ("send the
+original") is a real measurement — on Obama and SRK, both head-and-shoulders
+celebrity portraits. That fixture set is structurally incapable of surfacing
+the clothing-hijack failure. Our stated demo subject #1 is a consenting
+teammate in ordinary clothes, i.e. exactly the case D-34 never tested. Queued
+as T2.5 **gated on our own measurement** (R-27) rather than adopted on their
+evidence.
+
+**Profile expansion** (`HHG-T3/profiles.py` + `search/page_links.py`). One
+face-verified page becomes a launchpad: handle from URL shape, outbound social
+links off the page, one hop through link-in-bio hosts, same-handle guesses on
+other platforms, `site:linkedin.com/in` — then every result is re-fetched,
+re-embedded and cosine-gated. Unscorable results (LinkedIn HTTP 999) are kept
+as `linked` claims, separated from face-scored `expanded` results. Their
+handle extraction is disciplined: reserved-segment list so `/p/` never becomes
+a handle named "p", and unknown handles keyed by URL so they are never merged.
+
+This answers the owner's own question from this session ("dont we search on
+linkedin, i didnt saw any results from linkedin") — `linkedin.com` and
+`licdn.com` have been on our allowlist since the start, but nothing ever
+*generated* a LinkedIn candidate. Queued as T2.6.
+
+### Where we hold up
+
+Verified by reading their code, not their claims:
+
+- `face-evidence-blockchain`'s default "Local Simulated EVM" is a Python dict:
+  `_SHARED_STORE[fingerprint] = {...}`, `verify` is `fingerprint in store`,
+  `tx_hash` is `sha256(f"{fp}:{ts}:{project}")`, block number is
+  `6_428_190 + len(store) + 1`, contract address is a hardcoded
+  `# sample mock address`. It is labelled `[SIMULATION]` honestly in logs, but
+  their README calls it an EVM executing a verification lifecycle. Their
+  quickstart asks only for `SERPAPI_KEY`, so that *is* the judge's default
+  path. Ours is a real deployed contract, real `eth_call`, real tx/block, and
+  persists across CLI invocations. "Local" and "fake" are not the same thing.
+- Their `canonical.py` claims RFC 8785 JCS and is
+  `json.dumps(sort_keys=True, ensure_ascii=True, separators=(",",":"))`, which
+  diverges from JCS in three specified ways (JCS mandates literal UTF-8 with
+  minimal escaping, ECMAScript `Number::toString` so `1.0` serialises as `1`,
+  and UTF-16 code-unit key ordering). Deterministic Python-to-Python, so their
+  own cycle works; it is a documentation overclaim. Ours says
+  "RFC 8785-*equivalent* for our purposes" — an honest hedge — and forbids
+  floats outright (R-02), storing integer basis points. HHG-T3 keeps floats
+  (`round(cosine, 6)`) and does *not* overclaim the RFC.
+- Both other repos upload the probe face to a public host to run the search —
+  `tmpfiles.org` (anonymous, 1 h TTL) and `imgbb` respectively. We use GCV
+  `WEB_DETECTION`, which accepts raw bytes, so no hosted copy of the probe
+  exists. On a task with an explicit consent dimension this is architectural
+  rather than a policy promise. Three of four repos need the hop; we don't.
+- HHG-T3's `--network local` is in-process eth-tester that does not persist,
+  so by their own README `run` then `verify` as two commands requires Sepolia.
+
+### Corrections to my own earlier statements
+
+- I told the owner HHG-T3 searches only the aligned crop and criticised it on
+  D-34 grounds. **Wrong.** Their bundle records `"queries": ["face_crop",
+  "full_photo"]` and they keep three probe artifacts. They search multiple
+  representations; we search one.
+- I earlier lumped handle-based expansion together with the name-search pivot
+  I had rejected. **Wrong, and it cost us a feature.** See D-45.
+- `resolver.py` and `warmup.py` cited `rules.md I-05` / `I-10`, which did not
+  exist in `rules.md` — a doc-vs-code inconsistency I introduced. Fixed by
+  writing up the I-series (D-46), since both principles were real and
+  implemented; only the write-up was missing.
+
+## 3x. Decision log continued (D-39..D-46)
+
+| # | Decision | Rationale | Trade-off |
+|---|---|---|---|
+| **D-39** | **Re-verification recomputes every digest from source artifacts; a stored digest is never its own proof** (R-25) | Swapping `match_image.jpg` returned `PASS`. The chain commits to an image hash that the verifier never checked, making Tier 0's central argument hollow | Verification now needs the artifacts present on disk, so a run directory must stay self-contained. Already true — `match_image.jpg` has been saved since G3 |
+| **D-40** | **Tamper demo mutates the source artifact, and ships as three modes** (`swap-artifact`, `edit-bundle`, `forge-bundle`) | Editing a field inside the bundle proves only that hashing is deterministic. Mutating the artifact proves the bundle commits to the evidence. Three attacks with three distinct verdicts also apply R-24's principle to verifier output | More surface than one button. Justified: the three failures are genuinely different and collapsing them loses information |
+| **D-41** | **Escape every externally-sourced string before the DOM; add an XSS test category** (R-26) | Provider URLs were interpolated raw into an `href` while `escapeHtml()` sat unused two lines away | None. This is a straight defect fix |
+| **D-42** | **Evidence Explorer panel replaces the match-gated chain panel** | The buttons only rendered after a fresh `MATCH` in-session, so a refresh hid them and a `NO_MATCH` run could never reach them. Also lets the tamper demo run against the committed sample runs instead of needing a live match first | One more endpoint (`GET /api/runs`) and a panel to keep legible |
+| **D-43** | **Stay on Anvil. Add Base Sepolia as an opt-in bonus, off the recording's critical path** (reaffirms D-27) | The brief explicitly permits a local/simulated chain, which settles requirements. Ours is a *real* EVM with a real deployed contract — materially unlike one competitor's dict — so "local" is not a weakness we need to fix. A judge clones and runs the full anchor→verify→tamper cycle with no account and no funds. Sepolia buys permanence and an Etherscan link, which is presentation value worth having but not worth a faucet on the critical path | No public explorer link in the default path. Mitigated by anchoring one committed sample run on Base Sepolia as a permanent artifact |
+| **D-44** | **Head-crop search representation is gated on our own measurement, not adopted on their evidence** (R-27) | Their kurta finding is real and our fixture set (two celebrity portraits) could never have surfaced it. But D-34 is also real, and it is real *because we measured it*. Adopting a competitor's measurement as our own would be exactly the sourcing standard we criticise | Costs live GCV quota to measure. If it loses, we record the negative result and keep original-only |
+| **D-45** | **Profile expansion adopted — post-threshold, face-gated, with `linked` claims labelled separately** (R-28). Reverses my earlier conflation | I rejected `"Shah Rukh Khan" site:instagram.com` because a *name* search seeded by a face changes what the search *is*. Correct for that proposal. I then wrongly treated *handle* propagation as the same move. It is not: the handle comes from a page our own embedder already verified, and every expanded candidate must clear threshold on its own face score, so the embedding stays load-bearing at both ends. Their design makes this distinction explicitly and mine erased it | The face gate is the entire boundary. Drop it and this becomes the thing we refused to build — hence R-28 rather than a code comment |
+| **D-46** | **Write up the I-series in `rules.md` rather than strip the citations** | `resolver.py` and `warmup.py` cited `I-05`/`I-10` against a file with no I-series. Both principles (never impersonate a privileged crawler; a recorded run must be live) are genuinely implemented — the honest fix is to document what the code does, not to delete the reference and pretend the principle was informal | Two more rule IDs to keep true |
+
+## 3y. Current state — what remains (supersedes §3v)
+
+**Done:** everything through §3v (Tier 0, Tier 1, G1–G4, G6 prep, 224 tests,
+UI button-colour pass). Last commits: `5504b6e` (G6 prep), `6fb6d4e` (UI).
+
+**Planned, not started:** Tier 2 (T2.1–T2.8) as written in `phases.md`.
+Order is fixed: defects (T2.1–T2.3) before features (T2.4–T2.6) before
+completeness and presentation (T2.7–T2.8).
+
+**Blocked on owner:** T2.5 needs live GCV quota for its measurement; T2.8
+needs Base Sepolia faucet ETH in a throwaway wallet. Everything else is
+self-contained.
+
+**Still outside agent capability:** the G6 recording itself (consenting human
++ camera).

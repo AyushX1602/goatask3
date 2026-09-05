@@ -258,6 +258,65 @@ Runs on `127.0.0.1` only, no auth, single local user — acceptable for a local 
 3. On `NO_MATCH`, the verdict is the headline. The candidate list **collapses behind a "show diagnostics" toggle** and is captioned as rejected candidates. Scores in the 0.0–0.2 noise band must never be presented as ranked suggestions.
 4. Every row shows the reject reason, and the threshold and margin in force are always visible so a score can be read against them.
 
+## 5b. Verification is a separate trust domain (Tier 2, 7 Sep 2026)
+
+Added after a source-level review of three competitor repos found a real hole
+in ours (`memory.md` §3w, rule R-25). The boundary is worth stating explicitly
+because it was violated by omission rather than by a bad decision.
+
+**The anchor path and the verify path must not share a source of truth.**
+
+```
+ANCHOR TIME                          VERIFY TIME
+-----------                          -----------
+image bytes  --sha256-->  digest     file on disk --sha256--> digest'
+                            |                                   |
+                     bundle[digest]                             |
+                            |                     bundle[digest] vs digest'
+                        keccak256                        (must be compared)
+                            |                                   |
+                     anchor.json + chain            rebuilt bundle -> keccak256
+                                                            |
+                                                     vs anchor.json + chain
+```
+
+The defect was that `reverify.py` recomputed the keccak of `evidence.json` and
+compared it to `anchor.json` — both sides ultimately deriving from the stored
+bundle. The recorded `image_sha256` was never compared against the bytes on
+disk, so an artifact swap passed. Structural fix:
+
+- `evidence/artifacts.py` owns the artifact list and per-file digest checks.
+- `rebuild_from_artifacts()` is the **only** function permitted to construct
+  the structure that gets verified, and it recomputes every digest from disk.
+  No caller may hand it a digest.
+- `chain/reverify.py` consumes that output. It has no path that reads a digest
+  out of the stored bundle and treats it as verified.
+
+Verification reads **local disk plus one `eth_call`, and never re-fetches a
+hosted URL.** A candidate's platform image may 403, expire, or be deleted, and
+search-engine cache URLs expire by design; a verifier that depends on them
+would report tampering on healthy evidence. What was fetched at anchor time
+(`match.verified_against`) and what the verifier checked are deliberately
+separate questions.
+
+`chain/tamper.py` sits in the same domain and is the adversary: it operates
+only on a copied run directory in a temp path, mutates **source artifacts**
+rather than digest fields, and is covered by a test asserting the real
+`runs/<id>/` is byte-identical before and after.
+
+## 5c. Untrusted input reaches the DOM (Tier 2)
+
+Candidate `page_url`, `source`, provider titles, and reason text all originate
+outside this process. Treating them as trusted in the UI was a real defect
+(R-26): they were interpolated raw into an `href` attribute and into table
+cells while `escapeHtml()` sat unused in the same file.
+
+Boundary: **`webapp/static/app.js` treats every field of a candidate as
+hostile.** External values are escaped or set via `textContent`/`setAttribute`,
+and a `page_url` must validate as `http`/`https` before it may become an
+`href` — otherwise it renders as inert text. Covered by `tests/test_web_xss.py`,
+a test category that did not previously exist.
+
 ## 6. Directory layout
 
 ```

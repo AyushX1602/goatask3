@@ -77,7 +77,7 @@ The project ships when all of these are demonstrably true. "Demonstrably" means 
 | S6 | Raw third-party API responses are visible during the run | On camera |
 | S7 | An evidence commitment is written to a blockchain and the tx is viewable on a public explorer | On camera |
 | S8 | `verify` on an untouched bundle passes every check | On camera |
-| S9 | `verify` on a bundle with one character changed reports `TAMPERED` | On camera |
+| S9 | `verify` on a bundle with one character changed reports `BUNDLE_MODIFIED` (was `TAMPERED` — split into specific verdicts 7 Sep 2026, `design.md` §5.4) | On camera |
 | S10 | A judge can run the pipeline with zero API keys via the Bluesky provider | README quickstart |
 | S11 | The accept threshold is derived from a committed ROC curve, not hardcoded | `calibration/` |
 | S12 | No embedding, and no reversible derivative of one, appears in any committed artifact or on chain | Code review + `rules.md` R-01 |
@@ -88,24 +88,43 @@ The project ships when all of these are demonstrably true. "Demonstrably" means 
 | S17 | A face smaller than `MIN_FACE_PX` is rejected with a clear reason rather than scored | Test + visible in `audit.json` |
 | S18 | On `NO_MATCH`, no rejected candidate is presented as a ranked suggestion | Manual check against R-21 |
 
+### Added 7 Sep 2026 (Tier 2)
+
+S19–S20 exist because S8/S9 alone were satisfiable by a verifier that only
+checked the bundle against itself — which is what ours did. S21–S23 come from
+the same source-level review (`memory.md` §3w).
+
+| # | Criterion | Verified by |
+|---|---|---|
+| S19 | `verify` detects a **swapped artifact**: replacing `match_image.jpg` with different bytes reports `ARTIFACT_MISMATCH`, not `PASS` | Test + on camera. This was a real defect — see R-25 |
+| S20 | A **forged** bundle — internally consistent and correctly hashed, but never anchored — reports `NOT_ANCHORED` | Test + on camera. Consistency is not provenance |
+| S21 | A malicious candidate (`"><script>`, quote-break, `javascript:` URL) sourced from a search provider renders as inert text in the UI, injecting no element and setting no attribute | `tests/test_web_xss.py`, see R-26 |
+| S22 | Any past run can be verified and tamper-tested from the UI **without** performing a new search first | Manual check against the committed sample runs |
+| S23 | A `linked` profile claim is never counted as a match, never ranked among matches, and never shown with a score | Test + manual check against R-28 |
+
 ## 7. Requirement traceability
 
 Maps the brief's literal wording to where we satisfy it. Keep this current; it goes in the README.
 
+**Status corrected 7 Sep 2026.** Every row below read "not started" until this
+edit, months of work after the rows became true — a stale traceability table is
+the same class of doc-vs-code defect Tier 0 was created to remove, and this one
+was in the document that defines done.
+
 | Brief requirement | Component | Status |
 |---|---|---|
-| Detect and encode a face from an input image | `pipeline/face/` | not started |
-| Any face detection/recognition library acceptable | YuNet + ArcFace via onnxruntime | not started |
-| Use the face to search the web | `pipeline/search/google_lens.py` | not started |
-| Find at least one real matching social post | `pipeline/search/bluesky.py` + Lens | not started |
-| Genuine search, not hardcoded | audit log, candidate table, `NO_MATCH` run | not started |
-| Upload post or hash to a blockchain | `pipeline/chain/evm.py` | not started |
-| Create a verifiable, tamper-evident record | `FaceEvidenceRegistry.sol` | not started |
-| Demonstrate re-verifying against the on-chain record | `pipeline/chain/reverify.py` | not started |
-| No website required | CLI only, by design | n/a |
-| GitHub repo with full source | this repo | not started |
-| README: what / how to run / which chain / limitations | `README.md` | not started |
-| Screen recording of the pipeline end to end | `docs/recording-script.md` | not started |
+| Detect and encode a face from an input image | `pipeline/face/` — YuNet detect, 5-pt align, ArcFace `w600k_r50` 512-d | ✅ done |
+| Any face detection/recognition library acceptable | YuNet + ArcFace via onnxruntime, CPU | ✅ done |
+| Use the face to search the web | `pipeline/search/web_detect.py` — GCV `WEB_DETECTION` primary, SerpApi Lens secondary | ✅ done |
+| Find at least one real matching social post | committed run `runs/2026-09-05T18-07-40Z`, score 0.9806 | ✅ done |
+| Genuine search, not hardcoded | `audit.json` per run, full reject taxonomy (R-24), committed `NO_MATCH` run `runs/2026-09-05T18-19-36Z` | ✅ done |
+| Upload post or hash to a blockchain | `pipeline/chain/evm.py` + Anvil, real tx/block | ✅ done |
+| Create a verifiable, tamper-evident record | `contracts/src/FaceEvidenceRegistry.sol`, 8 Foundry tests incl. a 256-run fuzz | ✅ done |
+| Demonstrate re-verifying against the on-chain record | `pipeline/chain/reverify.py` | ⚠️ **done but defective** — artifact digests were never checked (R-25). Fix is T2.1, the top item in Tier 2 |
+| No website required | local demo UI exists as an *optional* aid; CLI covers `version`/`serve`/`anchor`/`verify` | ✅ done — though `scan`/`search`/`run-all` are still UI-only (T2.7) |
+| GitHub repo with full source | this repo | ✅ done |
+| README: what / how to run / which chain / limitations | `README.md` | ✅ done |
+| Screen recording of the pipeline end to end | `docs/recording-beat-sheet.md` written; recording itself not made | ⬜ not started — needs a consenting human + camera |
 
 ## 8. Constraints
 
@@ -131,7 +150,8 @@ Written now, before a judge finds them. These go in the README verbatim.
 
 1. Open-web coverage depends on the subject being indexed by Google. A subject with little or no online presence correctly returns `NO_MATCH`. The pipeline works best on public figures; this is a property of the underlying index, not of our verifier.
 2. Web detection returns **visual similarity, not face identity**. Roughly 16% of returned links were on social domains in our measured sample, and many candidates are the wrong person. Accuracy comes entirely from our local ArcFace verification stage, which is why the ROC curve and threshold are published.
-3. **Verification is performed against the thumbnail the search engine served, not the live image on the platform.** The evidence bundle records the exact URL fetched and its sha256. We cannot assert that the platform's current image is unchanged.
+3. **Verification is performed against the bytes served at fetch time, not the live image on the platform.** The evidence bundle records the exact URL fetched, its sha256 and its perceptual hash, and `match.verified_against` records whether those bytes came from a search-engine cache or the platform origin. We cannot assert that the platform's current image is unchanged.
+3a. **Re-verification never re-fetches a hosted URL, deliberately.** It checks local artifact bytes against their recorded digests, plus one `eth_call`. Platform images 403, expire, or get deleted, and search-engine cache URLs expire by design — a verifier depending on them would report tampering on healthy evidence. So `verify` answers "are these the bytes that were scored and anchored?", not "is the post still live?". Those are different questions and the bundle keeps them separate. (Design: `design.md` §5.4. This is the *intended* boundary; the fact that artifact digests were not checked at all until Tier 2 was a defect, not this limitation — see R-25.)
 4. The Bluesky provider searches a corpus we build at runtime, not the whole web. It exists so the repo runs with no API key. A Bluesky-only run is a demonstration of the verifier, not a web search, and is labelled as such.
 5. X/Twitter, Instagram, Facebook, TikTok and LinkedIn are reachable **only** as indexed links. None offers a free search API (X moved to pay-per-use in Feb 2026), so we cannot query them directly or confirm a post still exists.
 6. The similarity threshold is calibrated on a small labelled pair set, not a benchmark-scale evaluation. Measured separation was wide (same-person 0.765 vs non-match ceiling 0.074), but that is not a substitute for a proper benchmark.

@@ -202,6 +202,112 @@ smallest variant tried, which made a working fix look like it had never run.
 A diagnostics table that misdescribes our own behaviour is worse than no
 table, because it invites exactly the wrong debugging conclusion.
 
+### R-25 — Re-verification recomputes every digest from the source artifact. A stored digest is never reused as its own proof
+
+`chain/reverify.py` must rebuild the hashable bundle by recomputing each
+recorded digest (`match.image_sha256`, `match.image_phash`, and any future
+artifact digest) from the file on disk, and only then canonicalise and hash.
+No code path may carry a digest across from the stored bundle into the
+structure it then verifies.
+
+*Why:* found 7 Sep 2026 by reading a competitor's verifier and checking ours
+against it. Ours recomputed keccak256 from `evidence.json` and compared it to
+the anchored hash — which means **replacing `match_image.jpg` with a
+completely different image still produced `PASS`**. The bundle JSON was
+untouched, so its hash was untouched, and nothing ever compared the recorded
+`image_sha256` against the bytes actually on disk. Tier 0 argued that
+refusing to anchor an empty image hash mattered because "imageHash must mean
+something"; leaving it unchecked at verify time made it decorative. A
+verifier whose two sides both derive from the same stored field proves only
+that hashing is deterministic.
+
+### R-26 — Every externally-sourced string is escaped before it reaches the DOM
+
+Any value originating outside this process — candidate `page_url`, `source`,
+provider titles, reject-reason text built from provider data — must pass
+through `escapeHtml()` before being interpolated into markup, including into
+attribute positions. Prefer `textContent` and `createElement`/`setAttribute`
+over `innerHTML` template interpolation for anything carrying external data.
+
+*Why:* found 7 Sep 2026. `app.js` interpolated `c.page_url` raw into both an
+`href` attribute and an element body, and `c.source`/`shortReason` raw into
+table cells, while `escapeHtml()` already existed in the same file and was
+applied to the adjacent `title` attribute. A provider-supplied URL containing
+a double quote breaks out of the attribute. The practical blast radius is
+small — a localhost demo with no credentials — but the fix is a few lines and
+"an attacker would have to poison a search index first" is not a security
+boundary we chose, it is one we got lucky with.
+
+### R-27 — A new search representation ships only if it is measured to beat the current one on our own fixtures
+
+Adding or changing what image is sent to a search provider requires a
+before/after measurement on our own probe fixtures, recorded in `memory.md`
+with candidate counts and outcome changes. A representation that a competitor
+reports as better, or that is intuitively better, is a hypothesis until
+measured here.
+
+*Why:* D-34 established "send the original, not the aligned crop" from a real
+measurement, and that measurement is why we trust it. A competitor measured a
+different failure — a probe wearing distinctive clothing returned almost
+entirely garment listings, because the engine locked onto the outfit — which
+our two celebrity-portrait fixtures could never have surfaced. Both findings
+are real, which is precisely why the next one has to be measured too rather
+than argued.
+
+### R-28 — An expanded candidate is a match only if it clears the threshold on its own face score. A published link is a claim, never a match
+
+Any candidate discovered by expanding outward from an already-verified page
+(handle propagation, outbound page links, link-in-bio hops, platform profile
+guesses) re-enters the normal pipeline: fetch, detect, align, embed, score
+against the probe, threshold, margin. Candidates that cannot be face-scored —
+because the platform blocks media, or no image is resolvable — may be
+recorded as a `linked` claim with an explicit label, and must never be
+counted as a match, ranked among matches, or shown with a score.
+
+*Why:* this is the boundary that separates legitimate cross-platform
+expansion from the name-search pivot rejected earlier (see `memory.md` D-45).
+Searching a *name* that a provider leaked replaces face-driven discovery with
+string-driven discovery, which the brief's "use the face to search the web"
+forbids. Propagating a *handle* off a page our own embedder already verified,
+and then face-gating every result, keeps the embedding load-bearing at both
+ends. The distinction is real and it is entirely carried by this rule — drop
+the face gate and the feature becomes the thing we refused to build.
+
+---
+
+## Integrity principles (I-series)
+
+Narrower than the hard invariants above and more situational, but cited
+directly in code. Added to `rules.md` 7 Sep 2026: `pipeline/verify/resolver.py`
+and `scripts/warmup.py` already cited `I-05` and `I-10` before this section
+existed, which was itself a doc-vs-code inconsistency of exactly the kind
+Tier 0 was about. The principles were real and implemented; only the write-up
+was missing.
+
+### I-05 — Fetch honestly. Never impersonate a privileged crawler
+
+An ordinary browser User-Agent is acceptable for one-off candidate image
+fetches: it claims nothing false, only that we are a normal HTTP client.
+Sending `Googlebot`, `facebookexternalhit`, `Twitterbot`, or any UA that
+claims to *be* a specific company's own crawler is forbidden, because it
+seeks access that platform granted to that company and not to us. Our own
+API calls to GCV and SerpApi keep the descriptive contact UA (R-12).
+
+*Why:* Instagram, Facebook and TikTok were re-measured under three client
+profiles (our UA, a browser UA, browser UA + Referer) and are byte-identically
+blocked under all three — so crawler impersonation was never a capability
+question, only an honesty one. We report `reject-platform-blocked` instead.
+
+### I-10 — A recorded run must be live, not replayed
+
+`HTTP_CACHE=1` is correct during development (it protects a ~100/month free
+tier, R-04) and wrong for the recording take. `scripts/warmup.py` fails the
+readiness check while `HTTP_CACHE=1` is set, deliberately.
+
+*Why:* `audit.json` records per-provider cache hit/miss counts. A run
+recorded off a warm cache is visibly a replay to anyone who opens that file,
+and reads as canned even though the original fetch was genuine.
+
 ---
 
 ## Engineering conventions
