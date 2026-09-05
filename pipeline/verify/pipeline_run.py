@@ -21,6 +21,7 @@ import cv2
 import numpy as np
 
 from pipeline.cache.http_cache import BROWSER_USER_AGENT, HttpCache, get_http_cache
+from pipeline.cache.urlguard import UnsafeUrlError, assert_safe_url, safe_fetch
 from pipeline.config import MatchPolicy, get_config, load_match_policy
 from pipeline.face.align import align
 from pipeline.face.detect import FaceDetector
@@ -83,25 +84,37 @@ class FetchDiagnostics:
     routes_tried: int = 1  # size variants + resolver attempts, see attempted
 
 
-def _fetch_image(http: HttpCache, url: str, timeout: float = 12.0) -> tuple[bytes | None, FetchDiagnostics]:
+def _fetch_image(
+    http: HttpCache, url: str, timeout: float = 12.0
+) -> tuple[bytes | None, FetchDiagnostics, UnsafeUrlError | None]:
     if not url:
-        return None, FetchDiagnostics()
+        return None, FetchDiagnostics(), None
     try:
         # Browser UA for candidate image fetches (not our own API calls) —
         # see http_cache.BROWSER_USER_AGENT's docstring. Measured to matter:
         # generic sites (news CDNs, university pages) block a self-
         # describing bot UA with no reason to block a browser.
-        resp = http.get(url, timeout=timeout, headers={"User-Agent": BROWSER_USER_AGENT})
-        diag = FetchDiagnostics(
-            http_status=getattr(resp, "status_code", None),
-            content_type=getattr(resp, "content_type", None),
-            content_bytes=len(resp.content) if getattr(resp, "content", None) else 0,
+        # safe_fetch enforces assert_safe_url, redirect hop verification,
+        # and streaming size cap.
+        content, status_code, content_type = safe_fetch(
+            http,
+            url,
+            timeout=timeout,
+            headers={"User-Agent": BROWSER_USER_AGENT},
+            is_image=True,
         )
-        if not resp.ok:
-            return None, diag
-        return resp.content, diag
+        diag = FetchDiagnostics(
+            http_status=status_code,
+            content_type=content_type,
+            content_bytes=len(content) if content else 0,
+        )
+        if status_code < 200 or status_code >= 300:
+            return None, diag, None
+        return content, diag, None
+    except UnsafeUrlError as e:
+        return None, FetchDiagnostics(), e
     except Exception:
-        return None, FetchDiagnostics()
+        return None, FetchDiagnostics(), None
 
 
 def _face_size_px(face) -> float:
@@ -159,28 +172,47 @@ def _score_one_candidate(
 
 @dataclass(frozen=True)
 class _VariantOutcome:
-    status: str  # "ok" | "blocked" | "fetch-failed" | "not-image"
+    status: str  # "ok" | "blocked" | "fetch-failed" | "not-image" | "unsafe"
     url: str
     image_bytes: bytes | None = None
     decoded: np.ndarray | None = None
-    # Every URL that was actually tried before landing on `url`, in order.
-    # Exists so a fetch-failed message can report "N variant(s) tried,
-    # primary was X" instead of naming only the LAST (smallest, least
-    # informative) variant attempted — a real bug found live 5 Sep 2026,
-    # where a failure message named ?name=thumb even though the size-
-    # variant fix had already tried orig/large/medium/small first.
     attempted: tuple[str, ...] = ()
-    # Real, measured fetch observations for THIS specific url — never a
-    # placeholder. See FetchDiagnostics for why this exists.
     diagnostics: FetchDiagnostics = field(default_factory=FetchDiagnostics)
+    unsafe_cause: str | None = None
+    unsafe_detail: str | None = None
 
 
 def _classify_fetch(http: HttpCache, url: str) -> _VariantOutcome:
     """Fetches one candidate URL and classifies what we got, so a 200
     response carrying an HTML stub (Instagram/Facebook lookaside URLs,
-    verified live 5 Sep 2026) is never conflated with "no face detected".
+    verified live 5 Sep 2026) is never conflated with "no face detected",
+    and unsafe SSRF attempts are rejected cleanly.
     """
-    data, diag = _fetch_image(http, url)
+    try:
+        assert_safe_url(url)
+    except UnsafeUrlError as e:
+        return _VariantOutcome(
+            "unsafe",
+            url,
+            diagnostics=FetchDiagnostics(),
+            unsafe_cause=e.cause,
+            unsafe_detail=str(e),
+        )
+
+    data, diag, unsafe_err = _fetch_image(http, url)
+    if unsafe_err is not None:
+        if unsafe_err.cause == "not-an-image":
+            if is_media_blocked(url):
+                return _VariantOutcome("blocked", url, diagnostics=diag)
+            return _VariantOutcome("not-image", url, diagnostics=diag)
+        return _VariantOutcome(
+            "unsafe",
+            url,
+            diagnostics=diag,
+            unsafe_cause=unsafe_err.cause,
+            unsafe_detail=str(unsafe_err),
+        )
+
     if data is None:
         if is_media_blocked(url):
             return _VariantOutcome("blocked", url, diagnostics=diag)
@@ -206,28 +238,6 @@ def _resolve_candidate_image(http: HttpCache, cand: Candidate) -> _VariantOutcom
     the first variant that decodes as an actual image, stopping early
     when a platform-blocked verdict is reached (retrying a different size
     of a domain that refuses programmatic access cannot help).
-
-    A variant that decodes but has a too-small or absent face is still
-    "ok" here — quality gating happens one layer up, where the detector
-    and embedder live. We do NOT keep walking past the first decodable
-    image, because every fallback list here is largest-resolution-first,
-    so a face too small in the largest available variant will only get
-    smaller in the rest (measured: X's medium/large/orig are pixel-
-    identical at 1080x1080; only size ever shrinks going down the list).
-
-    Repeat fetches of the same URL across runs are absorbed by HttpCache
-    (R-04), so this sequential per-candidate walk does not re-hit the
-    network on a cached run even though it may issue up to len(urls)
-    requests on a cold one.
-
-    If EVERY known image URL fails (or there was none to begin with), and
-    cand.page_url is set, falls through to the resolver cascade
-    (verify/resolver.py: OpenGraph, keyless oEmbed, Reddit .json) as a
-    last resort before giving up — 6 Sep 2026, owner instruction: recover
-    scoreable images instead of reporting a bare dash wherever a
-    legitimate route exists.
-
-    Returns None if there were no URLs to try and no page_url either.
     """
     urls = [cand.image_url, *cand.image_url_fallbacks]
     urls = [u for u in urls if u]
@@ -244,15 +254,28 @@ def _resolve_candidate_image(http: HttpCache, cand: Candidate) -> _VariantOutcom
         )
         if outcome.status == "ok":
             return outcome
-        if outcome.status == "blocked":
-            return outcome  # no point trying a different size of a blocked domain
+        if outcome.status in ("blocked", "unsafe"):
+            return outcome  # no point trying fallbacks if blocked or unsafe
         last_non_ok = outcome
 
-    if last_non_ok is not None and last_non_ok.status == "blocked":
+    if last_non_ok is not None and last_non_ok.status in ("blocked", "unsafe"):
         return last_non_ok
 
     if not cand.page_url:
         return last_non_ok
+
+    try:
+        assert_safe_url(cand.page_url)
+    except UnsafeUrlError as e:
+        if last_non_ok is not None:
+            return last_non_ok
+        return _VariantOutcome(
+            "unsafe",
+            cand.page_url,
+            attempted=tuple(tried) + (f"unsafe-page:{cand.page_url}",),
+            unsafe_cause=e.cause,
+            unsafe_detail=str(e),
+        )
 
     cascade = resolve_page_to_image_url(http, cand.page_url)
     cascade_route_names = ",".join(cascade.routes_tried) or "none"
@@ -387,6 +410,28 @@ def run_pipeline(
         data = outcome.image_bytes if outcome else None
         if outcome is not None:
             candidate_diagnostics[cand.image_url] = outcome.diagnostics
+
+        if outcome is not None and outcome.status == "unsafe":
+            cause = outcome.unsafe_cause or "internal-address"
+            detail = outcome.unsafe_detail or "SSRF/safety check failed"
+            if cause == "not-an-image":
+                prerejected.append(
+                    (
+                        cand,
+                        "reject-not-an-image",
+                        f"fetched {cand.image_url} successfully but it is not a "
+                        "decodable image, so the face could not be verified",
+                    )
+                )
+            else:
+                prerejected.append(
+                    (
+                        cand,
+                        "reject-unsafe-url",
+                        f"unsafe URL ({cause}): {detail}",
+                    )
+                )
+            continue
 
         if outcome is not None and outcome.status == "blocked":
             # Distinguish a platform that deliberately refuses programmatic

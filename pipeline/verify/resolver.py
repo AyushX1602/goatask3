@@ -31,6 +31,7 @@ import re
 from dataclasses import dataclass, field
 
 from pipeline.cache.http_cache import BROWSER_USER_AGENT, HttpCache
+from pipeline.cache.urlguard import UnsafeUrlError, assert_safe_url, safe_fetch
 
 # --------------------------------------------------------------------------
 # Route 1: OpenGraph / Twitter Card image extraction
@@ -174,29 +175,59 @@ def resolve_page_to_image_url(http: HttpCache, page_url: str) -> CascadeResult:
     """
     attempts: list[ResolveAttempt] = []
 
+    try:
+        assert_safe_url(page_url)
+    except UnsafeUrlError as e:
+        return CascadeResult(
+            None,
+            (ResolveAttempt("urlguard", False, detail=f"unsafe page_url ({e.cause}): {e}"),),
+        )
+
     oembed_url = oembed_endpoint_for(page_url)
     if oembed_url:
         try:
-            resp = http.get(oembed_url, timeout=10.0, headers={"User-Agent": BROWSER_USER_AGENT})
-            if resp.ok:
-                thumb = extract_oembed_thumbnail(resp.json())
+            assert_safe_url(oembed_url)
+            body, status_code, _ = safe_fetch(
+                http,
+                oembed_url,
+                timeout=10.0,
+                headers={"User-Agent": BROWSER_USER_AGENT},
+                is_image=False,
+                max_bytes=100_000,
+            )
+            if 200 <= status_code < 300:
+                import json
+
+                thumb = extract_oembed_thumbnail(json.loads(body.decode("utf-8")))
                 if thumb:
+                    assert_safe_url(thumb)
                     attempts.append(ResolveAttempt("oembed", True, thumb))
                     return CascadeResult(thumb, tuple(attempts))
-            attempts.append(ResolveAttempt("oembed", False, detail=f"http {resp.status_code}"))
+            attempts.append(ResolveAttempt("oembed", False, detail=f"http {status_code}"))
         except Exception as e:
             attempts.append(ResolveAttempt("oembed", False, detail=f"{type(e).__name__}: {e}"))
 
     reddit_url = reddit_json_url(page_url)
     if reddit_url:
         try:
-            resp = http.get(reddit_url, timeout=10.0, headers={"User-Agent": BROWSER_USER_AGENT})
-            if resp.ok:
-                img = extract_reddit_image(resp.json())
+            assert_safe_url(reddit_url)
+            body, status_code, _ = safe_fetch(
+                http,
+                reddit_url,
+                timeout=10.0,
+                headers={"User-Agent": BROWSER_USER_AGENT},
+                is_image=False,
+                max_bytes=500_000,
+            )
+            if 200 <= status_code < 300:
+                import json
+
+                img = extract_reddit_image(json.loads(body.decode("utf-8")))
                 if img:
+                    assert_safe_url(img)
                     attempts.append(ResolveAttempt("reddit_json", True, img))
                     return CascadeResult(img, tuple(attempts))
-            attempts.append(ResolveAttempt("reddit_json", False, detail=f"http {resp.status_code}"))
+            attempts.append(ResolveAttempt("reddit_json", False, detail=f"http {status_code}"))
         except Exception as e:
             attempts.append(ResolveAttempt("reddit_json", False, detail=f"{type(e).__name__}: {e}"))
 
@@ -204,13 +235,22 @@ def resolve_page_to_image_url(http: HttpCache, page_url: str) -> CascadeResult:
     # so it is the general fallback tried after the two platform-specific,
     # more-reliable routes above.
     try:
-        resp = http.get(page_url, timeout=10.0, headers={"User-Agent": BROWSER_USER_AGENT})
-        if resp.ok:
-            img = extract_opengraph_image(resp.content)
+        assert_safe_url(page_url)
+        body, status_code, _ = safe_fetch(
+            http,
+            page_url,
+            timeout=10.0,
+            headers={"User-Agent": BROWSER_USER_AGENT},
+            is_image=False,
+            max_bytes=_HTML_HEAD_SNIFF_BYTES,
+        )
+        if 200 <= status_code < 300:
+            img = extract_opengraph_image(body)
             if img:
+                assert_safe_url(img)
                 attempts.append(ResolveAttempt("opengraph", True, img))
                 return CascadeResult(img, tuple(attempts))
-        attempts.append(ResolveAttempt("opengraph", False, detail=f"http {resp.status_code}"))
+        attempts.append(ResolveAttempt("opengraph", False, detail=f"http {status_code}"))
     except Exception as e:
         attempts.append(ResolveAttempt("opengraph", False, detail=f"{type(e).__name__}: {e}"))
 

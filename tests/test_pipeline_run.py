@@ -467,7 +467,7 @@ def test_candidate_fetch_uses_browser_user_agent_not_the_research_ua(detector, e
     monkeypatch.setattr("pipeline.verify.pipeline_run.get_http_cache", lambda: RecordingHttp())
 
     provider = FakeProvider(
-        [Candidate(image_url="https://example.test/photo.jpg", page_url="https://x.com/1", source="fake")]
+        [Candidate(image_url="https://example.com/photo.jpg", page_url="https://x.com/1", source="fake")]
     )
     run_pipeline(png, probe_vec, [provider], detector, embedder, policy=POLICY)
 

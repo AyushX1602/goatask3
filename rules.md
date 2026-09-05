@@ -190,7 +190,10 @@ Each reject reason names a distinct, observable cause. Specifically:
 `reject-no-face` means an image was decoded and contained no face;
 `reject-not-an-image` means bytes arrived but did not decode;
 `reject-platform-blocked` means the platform refuses programmatic media
-access; `reject-fetch-failed` means the network fetch itself failed. These
+access; `reject-fetch-failed` means the network fetch itself failed;
+`reject-unsafe-url` means the URL failed SSRF validation (non-https scheme,
+internal or private IP address, unresolvable host, response size cap exceeded,
+or magic bytes mismatch). These
 must not be collapsed into each other, and a message must not name only the
 last of several URLs attempted.
 
@@ -272,6 +275,19 @@ forbids. Propagating a *handle* off a page our own embedder already verified,
 and then face-gating every result, keeps the embedding load-bearing at both
 ends. The distinction is real and it is entirely carried by this rule — drop
 the face gate and the feature becomes the thing we refused to build.
+
+### R-29 — All external candidate fetches must be hardened against SSRF
+
+Candidate URLs and page URLs originate from untrusted search engine results.
+Every outbound fetch of a candidate URL or page must pass through
+`pipeline/cache/urlguard.py:assert_safe_url` and `safe_fetch`:
+- Scheme must be `https`. `http`, `file`, `data`, and loopback are unconditionally rejected.
+- Host must resolve via DNS to a public internet IP. Loopback (`127.0.0.1`, `::1`), private RFC1918 (`10.*`, `172.16-31.*`, `192.168.*`), link-local (`169.254.*`), multicast, and reserved addresses are strictly rejected.
+- Redirect hops are capped at 3, and each intermediate hop is re-validated before being followed.
+- Response payloads must be streamed and size-capped, terminating the connection as soon as the threshold is exceeded.
+- Image fetches must verify real magic bytes (`looks_like_image`) rather than trusting the declared `Content-Type`.
+
+*Why:* search results contain arbitrary strings. Without strict egress filtering, an attacker or poisoned search index could induce the local verification pipeline to hit local services (e.g. `127.0.0.1:8545` Anvil RPC, `localhost:8000` demo UI) or cloud metadata endpoints (`169.254.169.254`).
 
 ---
 
