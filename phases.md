@@ -98,8 +98,8 @@ Remaining effort ≈ 8–10 focused hours. Face core is **done, do not touch it*
 | **F4** | Candidate verification loop, `verify/pipeline_run.py` | ✅ DONE. Live end-to-end MATCH: real Instagram post, score 0.7685, 47 candidates examined. Found+fixed a real YuNet large-image bug along the way (see memory.md 3c) |
 | **F5** | Image upload input: `POST /api/upload` (D-19) | ✅ DONE. CLI `--image PATH` not yet added — UI path proven live instead |
 | **F6** | UI correctness pass (R-21, D-24) | ✅ DONE. NO_MATCH headline + diagnostics toggle, 3-state liveness rendering |
-| **F7** | `evidence/canonical.py` + `bundle.py` + salted commitment (D-26) | Two identical runs produce byte-identical `evidence.json` and the same hash. No floats in hashed output |
-| **F8** | `contracts/EvidenceRegistry.sol` + Foundry + Anvil deploy (D-27) | `anchor` → `verify` round trip green; double-anchor reverts |
+| **F7** | `evidence/canonical.py` + `bundle.py` + salted commitment (D-26) | ✅ DONE. Live: real MATCH produced `0xef13f0ea...`, independently recomputed from the persisted file, byte-identical. No floats in hashed output (enforced, not just avoided) |
+| **F8** | `contracts/EvidenceRegistry.sol` + Foundry + Anvil deploy (D-27) | **STOPPED HERE per owner instruction** — blockchain phase, not started |
 | **F9** | `chain/evm.py` + **the tamper demo** | `verify` PASSes on an untouched bundle; a one-character edit reports `TAMPERED` with a non-zero exit code |
 | **F10** | README front door, `docs/` move (D-33), 2–3 sample runs incl. a real `NO_MATCH` | Clean clone + install + run works; README covers what / how-to-run / which-chain / limitations |
 | **F11** | Screen recording | One take: detect → search → candidate table → real post in browser → anchor → verify PASS → tamper FAIL → `NO_MATCH` run |

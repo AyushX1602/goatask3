@@ -26,8 +26,10 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from pipeline import __version__ as PIPELINE_VERSION
 from pipeline.audit.run_log import build_audit, new_run_id, write_audit
-from pipeline.config import RUNS_DIR, ensure_dirs, get_config
+from pipeline.config import RUNS_DIR, ensure_dirs, get_commitment_salt, get_config
+from pipeline.evidence.bundle import build_evidence
 from pipeline.face.align import align
 from pipeline.face.detect import FaceDetector
 from pipeline.face.embed import FaceEmbedder
@@ -74,6 +76,7 @@ class SearchResponse(BaseModel):
     margin_required: float
     candidates: list[dict]
     degraded_closed_corpus: bool = False
+    evidence_hash: str | None = None
 
 
 def _decode_upload(data: bytes) -> np.ndarray | None:
@@ -133,6 +136,8 @@ async def _handle_probe(
     _runs[run_id] = {
         "started_at": time.time(),
         "probe_vec": embedding.vec,
+        "embedding": embedding,  # F7: build_evidence needs the full object, R-01: never leaves this process
+        "is_live_capture": is_live_capture,
         "aligned_png": crop_bytes,
         "liveness": {
             "passed": liveness_passed,
@@ -191,6 +196,7 @@ def search(run_id: str) -> SearchResponse:
         return SearchResponse(
             run_id=run_id, crawl_size=0, verdict="ERROR", threshold=0,
             margin_required=0, candidates=[], degraded_closed_corpus=False,
+            evidence_hash=None,
         )
 
     run_state = _runs[run_id]
@@ -226,6 +232,37 @@ def search(run_id: str) -> SearchResponse:
     audit["degraded_closed_corpus"] = degraded
     write_audit(RUNS_DIR / run_id, audit)
 
+    evidence_hash_hex = None
+    if result.match.verdict == "MATCH":
+        # F7: build and persist the evidence bundle. No chain exists yet
+        # (owner instruction: stop before blockchain) — this only proves
+        # the bundle is canonical and reproducible, ready for a future
+        # anchor step to consume.
+        liveness_dict = run_state["liveness"]
+        from pipeline.face.types import LivenessResult
+
+        liveness_obj = LivenessResult(
+            passed=liveness_dict["passed"],
+            score=liveness_dict["score"] or 0.0,
+            label=liveness_dict["label"],
+        )
+        bundle = build_evidence(
+            run_id=run_id,
+            embedding=run_state["embedding"],
+            salt=get_commitment_salt(),
+            liveness=liveness_obj,
+            is_live_capture=run_state["is_live_capture"],
+            match=result.match,
+            providers_queried=[p.name for p in providers],
+            degraded_closed_corpus=degraded,
+            identity_signals=result.identity_signals,
+            candidates_examined=len(result.match.all_scored),
+            pipeline_version=PIPELINE_VERSION,
+        )
+        (RUNS_DIR / run_id).mkdir(parents=True, exist_ok=True)
+        (RUNS_DIR / run_id / "evidence.json").write_bytes(bundle.canonical_json)
+        evidence_hash_hex = bundle.evidence_hash_hex
+
     return SearchResponse(
         run_id=run_id,
         crawl_size=len(_bluesky.index) if degraded else 0,
@@ -234,4 +271,5 @@ def search(run_id: str) -> SearchResponse:
         margin_required=result.match.margin_required,
         candidates=audit["candidates"],
         degraded_closed_corpus=degraded,
+        evidence_hash=evidence_hash_hex,
     )

@@ -81,7 +81,41 @@ This is the first real, live, end-to-end MATCH against an actual social post, th
 
 ---
 
-**Next action.** F1-F6 complete (cache, quality gate, web-detect provider, verification loop, upload input, UI correctness). Owner instruction was "start coding, paste API key later" — proceeding without a stop for GCV specifically, since SerpApi already proved the concept live. Remaining: F7 evidence bundle, F8 Foundry contract + Anvil, F9 chain anchor + tamper demo, F10 README, F11 recording. Blockchain (F8/F9) requires installing Foundry (not present — checked, `anvil`/`forge`/`cast` all missing) and is otherwise unauthorised-by-default per the original "stop before blockchain" instruction; will flag before starting F8 rather than assume the scope reset lifted that.
+## 3d. F7 complete — evidence bundle proven live, then STOPPED per explicit instruction
+
+5 Sep 2026. Owner said "continue, stop before blockchain phase" — F7 built and verified live, then stopped exactly at the F7/F8 boundary as instructed.
+
+**Installed `eth-hash[pycryptodome]`** for a real EVM-compatible keccak256 (verified it differs from SHA3-256 and from SHA-256 — a common mistake, tested explicitly in `test_keccak256_differs_from_sha256`).
+
+**`evidence/canonical.py`** — `canonical_bytes` walks the structure and *raises* `NonCanonicalValueError` on any float, rather than silently coercing one. That distinction matters: silent coercion is exactly the kind of drift that breaks hash reproducibility without anyone noticing until a future `verify()` call fails. `bool` explicitly confirmed not to trip the float check (it's an `int` subclass in Python).
+
+**`evidence/commitment.py`** — `face_commitment()` never touches anything but `keccak256(salt || quantised_vector)`. Tested that it: (a) reproduces identically given the same salt, (b) differs with a different salt, (c) **absorbs float noise** — two embeddings differing by 1e-6 per element (the kind of noise a re-encode or re-alignment would introduce) still produce an identical commitment, which is the entire point of quantising rather than hashing the raw float32 vector.
+
+**`evidence/bundle.py`** — `build_evidence()` is the *only* place a bundle gets constructed, specifically so a future chain module can't build its own dict and drift from what gets hashed. Refuses to build a bundle for a `NO_MATCH` (R-16: that's an audit-log outcome, never an evidence bundle). Upload probes are forced to `liveness_label: not_applicable` regardless of what the liveness model itself reported (R-22), tested explicitly.
+
+**Live proof, not just unit tests.** Re-ran the same Obama-portrait MATCH from the F4-F6 session through the actual running server:
+
+```
+verdict: MATCH
+evidence_hash: 0xef13f0eaee8ada50228a5b0a079deb725364698d1828488715ac41cc56a11eb4
+```
+
+Then independently reloaded the persisted `runs/<id>/evidence.json`, re-parsed it, re-canonicalised it, and recomputed the hash from scratch in a separate process:
+
+```
+stored bytes match canonical_bytes(parsed): True
+recomputed hash: 0xef13f0eaee8ada50228a5b0a079deb725364698d1828488715ac41cc56a11eb4   <- identical
+```
+
+That is the exact property a future `anchor()`/`verify()` pair depends on, proven at the hash layer with a real bundle, before any chain code exists.
+
+**66 tests passing** (46 prior + 20 new evidence tests).
+
+**STOPPED HERE, exactly at F7/F8, per explicit owner instruction: "stop before blockchain phase."** F8 (Foundry contract + Anvil deploy) not started. Foundry (`anvil`/`forge`/`cast`) confirmed still not installed — will need to be set up when blockchain work is authorised.
+
+---
+
+**Next action.** F1-F7 complete. Awaiting explicit go-ahead for F8 (blockchain: Foundry contract + Anvil deploy + tamper demo). Everything up to and including the evidence bundle is done, tested, and proven against a real live run.
 
 ### What the owner should check in this revision
 
