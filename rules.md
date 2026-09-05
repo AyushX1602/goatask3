@@ -55,6 +55,28 @@ No batch face-search API, no CSV input of many faces, no loop over a directory o
 
 `--dry-run` must execute the full pipeline and anchor nothing. `--consent-record` writes a consent statement into the evidence bundle. The domain allowlist is an allowlist, not a denylist: dating platforms, mugshot aggregators, and adult sites are never surfaced regardless of match score.
 
+**Allowlist principle (added 5 Sep 2026, after a real inconsistency found via
+a live run):** a platform belongs on `PLATFORM_DOMAINS`
+(`verify/allowlist.py`) if and only if **it is a platform where an
+individual maintains a public identity profile and publishes content under
+it.** This is a test to apply to a new platform, not a list to match by
+vibe. GitHub qualifies under this test — a public profile page, a follower
+graph, and content (repos, commits, README authorship) published under that
+identity, and GitHub itself describes the platform as social — and was
+missing purely by oversight, not by considered exclusion. LinkedIn was
+already on the list under the identical reasoning; the two platforms are not
+meaningfully different along this axis. Applying the same test forward: a
+CDN, a stock-photo host, a university faculty page, or a news outlet does
+not qualify, because none of those is a platform where the pictured person
+themselves maintains a profile and publishes under it — that is precisely
+why `reject-domain` on those hosts is correct, not an overreach.
+
+When this addition changes a real run's verdict, the pre-change audit log
+must be kept (not deleted or overwritten) alongside a re-run under the new
+list, so both are visible: what the honest old rule produced and what the
+corrected rule produces. See `calibration/quarantine/` for the concrete
+instance this principle was written from.
+
 ### R-07 — Embeddings are L2-normalised at creation
 
 Normalisation happens once, inside `embed()`. Every downstream consumer may assume `‖v‖ ≈ 1` and use a dot product for cosine. Never construct an `Embedding` by hand.
@@ -110,9 +132,13 @@ candidates go behind a "show diagnostics" affordance, captioned as rejected.
 Scores in the 0.0–0.2 band are **statistical noise** and must never be
 rendered as a ranked list of possible people.
 
-*Why:* measured non-match scores top out at 0.074 (mean −0.024, σ 0.054,
-mean+4σ = 0.193) while a true match sits near 0.77 (`architecture.md` §2a).
-A ranked table of 0.1-scoring faces reads as "the system thinks these might
+*Why:* the original n=9 pilot measured non-match scores topping out at 0.074
+(mean −0.024, σ 0.054, mean+4σ = 0.193; `architecture.md` §2a). Since then,
+two real live runs (`calibration/negatives_harvested.json`) pushed the
+observed ceiling to 0.1385 — a genuine widening, not a contradiction: n=9 was
+always too small to be the operating figure, which is exactly why it needed
+replacing rather than repeating. Either way, a true match sits near 0.77. A
+ranked table of 0.1-scoring faces reads as "the system thinks these might
 be you" when the system in fact rejected all of them. This produced a real
 false impression during testing that the engine was inaccurate, when the
 engine was correct and only the presentation was wrong. Misrepresenting
@@ -133,6 +159,48 @@ Presenting that as a liveness pass is a false assurance.
 Never fabricate, relax a threshold, or widen a search to force a match. At least one committed run in `runs/` must legitimately be `NO_MATCH`.
 
 *Why:* a system that always finds something is indistinguishable from a hardcoded one. The honest failure is evidence of authenticity.
+
+### R-23 — URL rewriting is additive-only. Never drop a URL the provider gave us
+
+Any code that rewrites a candidate's `image_url` — size-variant upgrades,
+CDN normalisation, thumbnail derivation — must return the provider's
+**original URL as a member of the resulting fallback chain**. A rewrite may
+propose better variants and may order them first, but it may never *replace*
+the one URL already known to have come from a real search result.
+
+*Why:* this is not hypothetical. The first cut of the X/Twitter size-variant
+upgrade (G1) replaced the original URL with five rewritten `?name=` variants.
+That is correct for `pbs.twimg.com/media/...`, but `pbs.twimg.com/profile_images/...`
+uses a completely different filename-suffix scheme where `?name=` returns
+404. On a real non-celebrity probe, GCV returned a **working** profile-image
+URL (HTTP 200, 14 KB), the rewrite turned it into five 404s, and the run
+reported `NO_MATCH` where a `MATCH` should have been. A recall optimisation
+made recall strictly worse, and it did so silently — the candidate simply
+became `reject-fetch-failed`.
+
+The invariant makes the worst case of any future rewrite "no better than
+before" instead of "worse than before". Enforced in
+`pipeline/search/media_urls.py::_with_original_first`, asserted generically
+by a property test rather than one test per platform, so a newly added
+platform scheme inherits the guarantee automatically.
+
+### R-24 — A reject reason must describe what actually happened
+
+Each reject reason names a distinct, observable cause. Specifically:
+`reject-no-face` means an image was decoded and contained no face;
+`reject-not-an-image` means bytes arrived but did not decode;
+`reject-platform-blocked` means the platform refuses programmatic media
+access; `reject-fetch-failed` means the network fetch itself failed. These
+must not be collapsed into each other, and a message must not name only the
+last of several URLs attempted.
+
+*Why:* the diagnostics table is the anti-fabrication evidence. Two separate
+live bugs came from violating this: Instagram/Facebook HTML stubs (HTTP 200,
+not an image) were reported as `reject-no-face` — claiming we had examined a
+photo we never received — and a multi-variant fetch failure reported only the
+smallest variant tried, which made a working fix look like it had never run.
+A diagnostics table that misdescribes our own behaviour is worse than no
+table, because it invites exactly the wrong debugging conclusion.
 
 ---
 

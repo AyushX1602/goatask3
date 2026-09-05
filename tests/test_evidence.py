@@ -11,6 +11,8 @@ import json
 import numpy as np
 import pytest
 
+from pathlib import Path
+
 from pipeline.config import MatchPolicy
 from pipeline.evidence.bundle import build_evidence, image_sha256
 from pipeline.evidence.canonical import (
@@ -173,6 +175,9 @@ def _liveness_live() -> LivenessResult:
     return LivenessResult(passed=True, score=0.99, label="live")
 
 
+_FAKE_IMAGE_BYTES = (Path(__file__).parent / "fixtures" / "obama1.jpg").read_bytes()
+
+
 def test_build_evidence_from_a_real_shaped_match():
     match = _match_result_accept()
     emb = _embedding()
@@ -190,12 +195,14 @@ def test_build_evidence_from_a_real_shaped_match():
         identity_signals=["Barack Obama", "Barack Obama"],  # dupes must dedupe
         candidates_examined=2,
         pipeline_version="0.1.0",
+        image_bytes=_FAKE_IMAGE_BYTES,
         captured_at=1757000000,
     )
 
-    assert bundle.data["schema_version"] == 1
+    assert bundle.data["schema_version"] == 2
     assert bundle.data["match"]["page_url"] == "https://www.instagram.com/p/Dc5KuZdDZiX/"
     assert bundle.data["match"]["score_bps"] == 7685
+    assert bundle.data["match"]["image_sha256"] == image_sha256(_FAKE_IMAGE_BYTES)
     assert bundle.data["probe"]["liveness_label"] == "live"
     assert bundle.data["run"]["identity_signals"] == ["Barack Obama"]  # deduped
     assert bundle.evidence_hash_hex.startswith("0x")
@@ -213,6 +220,7 @@ def test_build_evidence_rejects_no_match():
             run_id="x", embedding=_embedding(), salt=b"s" * 32, liveness=_liveness_live(),
             is_live_capture=True, match=match, providers_queried=[], degraded_closed_corpus=False,
             identity_signals=[], candidates_examined=0, pipeline_version="0.1.0",
+            image_bytes=_FAKE_IMAGE_BYTES,
         )
 
 
@@ -227,6 +235,7 @@ def test_upload_probe_never_reports_live(monkeypatch):
         is_live_capture=False,  # upload path
         match=match, providers_queried=["web_detect"], degraded_closed_corpus=False,
         identity_signals=[], candidates_examined=2, pipeline_version="0.1.0",
+        image_bytes=_FAKE_IMAGE_BYTES,
     )
     assert bundle.data["probe"]["liveness_label"] == "not_applicable"
 
@@ -241,6 +250,7 @@ def test_two_identical_runs_produce_byte_identical_bundles():
         is_live_capture=True, match=match, providers_queried=["web_detect"],
         degraded_closed_corpus=False, identity_signals=["Barack Obama"],
         candidates_examined=2, pipeline_version="0.1.0", captured_at=1757000000,
+        image_bytes=_FAKE_IMAGE_BYTES,
     )
     b1 = build_evidence(**kwargs)
     b2 = build_evidence(**kwargs)
@@ -256,8 +266,20 @@ def test_missing_published_at_defaults_to_zero_not_a_crash():
         run_id="x", embedding=_embedding(), salt=b"s" * 32, liveness=_liveness_live(),
         is_live_capture=True, match=match, providers_queried=[], degraded_closed_corpus=False,
         identity_signals=[], candidates_examined=1, pipeline_version="0.1.0",
+        image_bytes=_FAKE_IMAGE_BYTES,
     )
     assert bundle.data["post"]["published_at"] == 0
+
+
+def test_build_evidence_rejects_empty_image_bytes():
+    match = _match_result_accept()
+    with pytest.raises(ValueError, match="image_bytes"):
+        build_evidence(
+            run_id="x", embedding=_embedding(), salt=b"s" * 32, liveness=_liveness_live(),
+            is_live_capture=True, match=match, providers_queried=[], degraded_closed_corpus=False,
+            identity_signals=[], candidates_examined=1, pipeline_version="0.1.0",
+            image_bytes=b"",
+        )
 
 
 def test_image_sha256_helper():

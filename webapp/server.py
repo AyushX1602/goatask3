@@ -35,6 +35,7 @@ from pipeline.face.detect import FaceDetector
 from pipeline.face.embed import FaceEmbedder
 from pipeline.face.liveness import LivenessChecker
 from pipeline.face.quality import passes as quality_passes, probe_error_message
+from pipeline.cache.http_cache import get_http_cache
 from pipeline.search.bluesky import BlueskyProvider
 from pipeline.search.image_prep import prepare_search_image
 from pipeline.search.web_detect import WebDetectProvider
@@ -78,6 +79,10 @@ class SearchResponse(BaseModel):
     candidates: list[dict]
     degraded_closed_corpus: bool = False
     evidence_hash: str | None = None
+    # Candidates GCV asserted are the SAME image (match_kind full/partial)
+    # but that live on a platform we cannot fetch from. Reported alongside
+    # the verdict, never folded into it (R-03; see verify/matcher.py).
+    unverifiable_platform_hits: list[dict] = []
 
 
 def _decode_upload(data: bytes) -> np.ndarray | None:
@@ -216,12 +221,27 @@ def search(run_id: str) -> SearchResponse:
 
     primary_result = None
     primary_providers_queried: list[str] = []
+    http = get_http_cache()
+    cache_stats: dict[str, dict[str, int]] = {}
+
+    def _snapshot() -> tuple[int, int]:
+        s = http.stats()
+        return s["hits"], s["misses"]
+
+    def _record_delta(provider_name: str, before: tuple[int, int]) -> None:
+        after = _snapshot()
+        cache_stats[provider_name] = {
+            "hits": after[0] - before[0],
+            "misses": after[1] - before[1],
+        }
 
     if _web_detect.available():
+        before = _snapshot()
         primary_result = run_pipeline(
             search_image, probe_vec, [_web_detect], _detector, _embedder,
             public_image_url=public_image_url,
         )
+        _record_delta(_web_detect.name, before)
         primary_providers_queried = [_web_detect.name]
 
     # available()==True only means a key exists, not that a search will
@@ -237,7 +257,9 @@ def search(run_id: str) -> SearchResponse:
         if not _bluesky_crawled:
             _bluesky.crawl(_detector, _embedder)
             _bluesky_crawled = True
+        before = _snapshot()
         fallback_result = run_pipeline(search_image, probe_vec, [_bluesky], _detector, _embedder)
+        _record_delta(_bluesky.name, before)
 
         # Merge so the audit trail shows BOTH the failed/empty primary
         # attempt (if one was made) and the fallback attempt — never
@@ -252,6 +274,7 @@ def search(run_id: str) -> SearchResponse:
             identity_signals=fallback_result.identity_signals,
             images_fetched=fallback_result.images_fetched,
             images_deduped=fallback_result.images_deduped,
+            best_image_bytes=fallback_result.best_image_bytes,
         )
         providers_queried = primary_providers_queried + [_bluesky.name]
         degraded = True
@@ -266,6 +289,7 @@ def search(run_id: str) -> SearchResponse:
         liveness=run_state["liveness"],
         provider_reports=result.provider_reports,
         match=result.match,
+        cache_stats=cache_stats,
     )
     audit["identity_signals"] = result.identity_signals  # context only, R-03
     audit["degraded_closed_corpus"] = degraded
@@ -297,10 +321,20 @@ def search(run_id: str) -> SearchResponse:
             identity_signals=result.identity_signals,
             candidates_examined=len(result.match.all_scored),
             pipeline_version=PIPELINE_VERSION,
+            image_bytes=result.best_image_bytes,
         )
         (RUNS_DIR / run_id).mkdir(parents=True, exist_ok=True)
         (RUNS_DIR / run_id / "evidence.json").write_bytes(bundle.canonical_json)
         evidence_hash_hex = bundle.evidence_hash_hex
+
+    unverifiable_hits = [
+        {
+            "page_url": r.candidate.page_url,
+            "source": r.candidate.source,
+            "match_kind": r.candidate.match_kind,
+        }
+        for r in result.match.unverifiable_platform_hits
+    ]
 
     return SearchResponse(
         run_id=run_id,
@@ -311,4 +345,5 @@ def search(run_id: str) -> SearchResponse:
         candidates=audit["candidates"],
         degraded_closed_corpus=degraded,
         evidence_hash=evidence_hash_hex,
+        unverifiable_platform_hits=unverifiable_hits,
     )

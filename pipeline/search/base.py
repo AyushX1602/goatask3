@@ -20,6 +20,26 @@ class Candidate:
     provider_score: float | None = None  # recorded only — see R-03 above
     raw: dict = field(default_factory=dict)  # untouched provider response
     post_meta: dict | None = None  # author/text/timestamp if the provider supplies it
+    # Ordered, largest-resolution-first alternates for image_url. Exists
+    # because some platforms' thumbnails are missing at the URL we'd
+    # otherwise use (YouTube's maxresdefault.jpg 404s for some videos —
+    # measured, scripts/probe_size_variants.py, 5 Sep 2026) rather than
+    # simply being a different size. verify/pipeline_run.py walks this
+    # list and keeps the first variant that both fetches and decodes as an
+    # image, then rewrites the candidate to record THAT url — so evidence
+    # always cites the exact URL that was actually verified.
+    image_url_fallbacks: tuple[str, ...] = ()
+    # GCV's own classification of how confident it is this is the SAME
+    # image: "full" (fullMatchingImages — Google asserts pixel-identical),
+    # "partial" (partialMatchingImages), "similar" (visuallySimilarImages —
+    # just a lookalike), or "" when the provider gives no such signal
+    # (SerpApi, Bluesky). R-03 still applies in full: this is NEVER used to
+    # accept or reject a candidate. It exists purely for reporting —
+    # specifically to distinguish "the search engine asserts this exact
+    # image appears on a platform we cannot fetch from" (recorded, not
+    # accepted — a real signal about cross-platform image reuse worth
+    # showing) from "just another lookalike, ignore it".
+    match_kind: str = ""
 
 
 @dataclass(frozen=True)

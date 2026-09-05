@@ -27,6 +27,11 @@ contracts/lib/
 # Calibration pair images (may contain real faces — never committed raw)
 calibration/pairs/*/
 
+# Runs quarantined for consent reasons (real, non-consenting individuals
+# found via genuine search) — kept locally as sha256-only negative/positive
+# calibration data, never the repo. See rules.md consent principle.
+calibration/quarantine/
+
 # OS / editor
 .DS_Store
 Thumbs.db

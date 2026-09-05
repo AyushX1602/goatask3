@@ -1,4 +1,5 @@
-"""Social-platform allowlist. See design.md 2.5, R-06.
+"""Social-platform classification: allowlist, platform naming, content kind.
+See design.md 2.5, R-06.
 
 A match only counts if it sits on a public social platform, since the brief
 asks specifically for a "social media post". Registrable-domain comparison,
@@ -16,10 +17,22 @@ CDN hosts, not the platform's www domain:
 
 Excluding CDNs discarded most of the usable evidence. A Hrithik Roshan run
 threw away a 0.9771 `preview.redd.it` hit the same way.
+
+**Allowlist principle (rules.md R-06):** a platform belongs here iff it is
+one where an individual maintains a public identity profile and publishes
+content under it. `github.com` was added under this test (5 Sep 2026) after
+a live, genuine-search run scored a candidate's GitHub avatar at 0.9363 and
+`reject-domain`'d it — an internal inconsistency, since `linkedin.com` was
+already allowed under the identical reasoning and GitHub itself describes
+the platform as social. The pre-fix audit log for that run is kept (with
+identifying URLs sha256-redacted, never the person's identity or handle —
+see calibration/quarantine/) alongside a re-run under the corrected list,
+so both the honest old verdict and the corrected one are visible.
 """
 
 from __future__ import annotations
 
+import re
 from urllib.parse import urlparse
 
 # registrable domain -> human platform name.
@@ -56,19 +69,33 @@ PLATFORM_DOMAINS: dict[str, str] = {
     "mastodon.social": "Mastodon",
     "pinterest.com": "Pinterest",
     "tumblr.com": "Tumblr",
+    # GitHub — added 5 Sep 2026 under the R-06 allowlist principle: a public
+    # profile, a follower graph, and content (repos, README authorship)
+    # published under that identity. Same reasoning already applied to
+    # LinkedIn.
+    "github.com": "GitHub",
+    "githubusercontent.com": "GitHub",
 }
 
 # Platforms that serve media only to their own crawlers, so we can never
 # fetch the image to run our own face check. Verified 5 Sep 2026 against
 # our UA, a browser UA, and browser UA + Referer -- all three identical:
 #   fbsbx.com / instagram.com / facebook.com -> 200 with a tiny text/html stub
-#   tiktokcdn-us.com                         -> 403 (signed, expiring URL)
+#   tiktok.com/api/img/...                   -> blocked (verified live)
 # This is deliberate access control on their side, not blocking we can
 # route around. Recorded so the pipeline can explain a rejection honestly
 # instead of reporting a misleading generic fetch failure.
 MEDIA_BLOCKED_PLATFORMS: frozenset[str] = frozenset(
-    {"Instagram", "Facebook", "Meta", "TikTok"}
+    {"Instagram", "Facebook", "Meta"}
 )
+
+# TikTok is a split case, found live 5 Sep 2026 in the same run: the
+# `tiktok.com/api/img/?...` endpoint is blocked, but `tiktokcdn-us.com`
+# signed CDN URLs fetched successfully (score 0.0593, a genuine negative —
+# see calibration/negatives_harvested.json). Blocking is a property of the
+# ENDPOINT here, not the platform as a whole, so TikTok is deliberately
+# excluded from MEDIA_BLOCKED_PLATFORMS above and checked by path instead.
+TIKTOK_BLOCKED_PATH_PREFIXES: tuple[str, ...] = ("/api/img/", "/api/",)
 
 # Kept for backwards compatibility with existing call sites.
 SOCIAL_ALLOW: set[str] = set(PLATFORM_DOMAINS)
@@ -91,7 +118,103 @@ def platform_name(url: str) -> str | None:
 
 
 def is_media_blocked(url: str) -> bool:
-    """True if this platform is known to refuse programmatic media access,
-    so a fetch failure is expected and explainable rather than a defect."""
+    """True if this URL is known to refuse programmatic media access, so a
+    fetch failure is expected and explainable rather than a defect.
+
+    TikTok is checked by ENDPOINT PATH, not by platform membership alone
+    (see TIKTOK_BLOCKED_PATH_PREFIXES): its `tiktokcdn-us.com` signed CDN
+    URLs are fetchable (verified live) while `tiktok.com/api/img/...` is
+    not. Treating all of TikTok as blocked would misreport a fetchable CDN
+    hit as unverifiable.
+    """
     name = platform_name(url)
-    return name in MEDIA_BLOCKED_PLATFORMS if name else False
+    if not name:
+        return False
+    if name == "TikTok":
+        path = urlparse(url).path
+        return any(path.startswith(p) for p in TIKTOK_BLOCKED_PATH_PREFIXES)
+    return name in MEDIA_BLOCKED_PLATFORMS
+
+
+# --------------------------------------------------------------------------
+# Content kind — post vs profile (G1.2)
+# --------------------------------------------------------------------------
+
+# The brief asks for "at least one real, matching social media POST". A
+# profile page is not strictly a post, and quietly reporting one as a post
+# would be overclaiming. But profiles matter enormously in practice: for a
+# non-celebrity, their profile picture is frequently the ONLY image of them
+# that any search engine has indexed, so refusing to accept profiles would
+# mean the pipeline only works on public figures. Verified live on a real
+# non-celebrity probe, where an x.com profile was the single plausible hit
+# among 26 candidates.
+#
+# So we accept both and label them accurately, rather than either dropping
+# profiles or blurring the distinction.
+
+CONTENT_KIND_POST = "post"
+CONTENT_KIND_PROFILE = "profile"
+CONTENT_KIND_UNKNOWN = "unknown"
+
+# Ordered, most-specific-first. Each entry: (compiled pattern, kind).
+# Patterns are matched against the full URL. Post patterns are listed
+# before profile patterns for the same platform, since a post URL usually
+# contains the profile path as a prefix (e.g. x.com/<handle>/status/<id>).
+_CONTENT_KIND_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # X / Twitter
+    (re.compile(r"(?:x|twitter)\.com/[^/]+/status/\d+"), CONTENT_KIND_POST),
+    (re.compile(r"pbs\.twimg\.com/media/"), CONTENT_KIND_POST),
+    (re.compile(r"pbs\.twimg\.com/profile_images/"), CONTENT_KIND_PROFILE),
+    (re.compile(r"(?:x|twitter)\.com/[A-Za-z0-9_]{1,15}/?$"), CONTENT_KIND_PROFILE),
+    # YouTube — a video/short IS the post; @handle or /channel/ is a profile
+    (re.compile(r"youtube\.com/(?:watch\?v=|shorts/)|youtu\.be/"), CONTENT_KIND_POST),
+    (re.compile(r"i\.ytimg\.com/vi/"), CONTENT_KIND_POST),
+    (re.compile(r"youtube\.com/(?:@|channel/|c/|user/)"), CONTENT_KIND_PROFILE),
+    # Instagram / Threads
+    (re.compile(r"instagram\.com/(?:p|reel|tv)/"), CONTENT_KIND_POST),
+    (re.compile(r"threads\.net/@[^/]+/post/"), CONTENT_KIND_POST),
+    (re.compile(r"instagram\.com/[A-Za-z0-9_.]+/?$"), CONTENT_KIND_PROFILE),
+    # Facebook
+    (re.compile(r"facebook\.com/[^/]+/(?:posts|videos|photos)/"), CONTENT_KIND_POST),
+    (re.compile(r"facebook\.com/(?:permalink\.php|photo)"), CONTENT_KIND_POST),
+    # LinkedIn
+    (re.compile(r"linkedin\.com/(?:posts|feed/update)/"), CONTENT_KIND_POST),
+    (re.compile(r"linkedin\.com/in/"), CONTENT_KIND_PROFILE),
+    (re.compile(r"licdn\.com/.*profile-displayphoto"), CONTENT_KIND_PROFILE),
+    # Reddit
+    (re.compile(r"reddit\.com/r/[^/]+/comments/"), CONTENT_KIND_POST),
+    (re.compile(r"reddit\.com/(?:user|u)/"), CONTENT_KIND_PROFILE),
+    # Bluesky
+    (re.compile(r"bsky\.app/profile/[^/]+/post/"), CONTENT_KIND_POST),
+    (re.compile(r"bsky\.app/profile/[^/]+/?$"), CONTENT_KIND_PROFILE),
+    # TikTok
+    (re.compile(r"tiktok\.com/@[^/]+/video/"), CONTENT_KIND_POST),
+    (re.compile(r"tiktok\.com/@[A-Za-z0-9_.]+/?$"), CONTENT_KIND_PROFILE),
+    # GitHub — a repo page is treated as belonging to the owner's profile
+    # by the time content_kind() sees it (search/media_urls.derive_github_
+    # profile_url rewrites page_url before this runs), so a bare
+    # github.com/<user> is always a profile, never a "post": GitHub has no
+    # per-post permalink concept for an avatar the way a social feed does.
+    (re.compile(r"github\.com/[A-Za-z0-9_-]+/?$"), CONTENT_KIND_PROFILE),
+)
+
+
+def content_kind(page_url: str, image_url: str = "") -> str:
+    """Classifies a candidate as a post, a profile, or unknown.
+
+    Checks page_url first (it is the citable artifact), then falls back to
+    image_url, which sometimes carries the only usable signal — e.g. a bare
+    `pbs.twimg.com/profile_images/...` CDN hit whose parent page X does not
+    encode in the URL.
+
+    Returns CONTENT_KIND_UNKNOWN rather than guessing when neither URL
+    matches a known shape. `unknown` is an honest answer and is reported as
+    such; it must never be silently upgraded to "post".
+    """
+    for candidate_url in (page_url, image_url):
+        if not candidate_url:
+            continue
+        for pattern, kind in _CONTENT_KIND_PATTERNS:
+            if pattern.search(candidate_url):
+                return kind
+    return CONTENT_KIND_UNKNOWN

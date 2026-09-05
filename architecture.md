@@ -275,17 +275,24 @@ face-chain-verify/
 ├─ pipeline/
 │   ├─ __init__.py  config.py  cli.py
 │   ├─ face/        liveness.py  detect.py  align.py  embed.py  quality.py  types.py
-│   ├─ search/      base.py  orchestrator.py
-│   │               web_detect.py       # PRIMARY: serpapi + gcv backends
+│   ├─ search/      base.py  orchestrator.py  image_prep.py
+│   │               web_detect.py       # PRIMARY: gcv (primary) + serpapi backends
+│   │               media_urls.py       # G1/G1.1: platform CDN size-variant + URL
+│   │                                   #   derivation knowledge (X/Twitter dual scheme,
+│   │                                   #   YouTube thumbnail tiers). R-23: any rewrite
+│   │                                   #   must keep the provider's original URL in the
+│   │                                   #   resulting fallback chain, never drop it.
 │   │               bluesky.py          # keyless fallback, closed corpus
-│   ├─ verify/      dedupe.py  allowlist.py  matcher.py  calibrate.py
-│   ├─ evidence/    canonical.py  bundle.py  c2pa.py  ipfs.py
+│   ├─ verify/      dedupe.py  allowlist.py  matcher.py  calibrate.py  pipeline_run.py
+│   ├─ evidence/    canonical.py  commitment.py  bundle.py  c2pa.py  ipfs.py
+│   │               # bundle.py schema v2 (5 Sep 2026): post.content_kind,
+│   │               # match.image_phash, match.verified_against. See design.md 4.2.
 │   ├─ chain/       evm.py  ots.py  reverify.py  abi/
 │   ├─ audit/       run_log.py
 │   └─ cache/       http_cache.py
 ├─ contracts/
-│   ├─ src/FaceEvidenceRegistry.sol
-│   ├─ test/FaceEvidenceRegistry.t.sol
+│   ├─ src/EvidenceRegistry.sol         # deployed live to Anvil, F8/F9 (see phases.md)
+│   ├─ test/EvidenceRegistry.t.sol
 │   └─ script/Deploy.s.sol
 ├─ calibration/    pairs/  roc.png  threshold.json
 ├─ runs/           <run-id>/  evidence.json  audit.json  candidates/  probe.png

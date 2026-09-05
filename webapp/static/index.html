@@ -75,6 +75,9 @@
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th { text-align: left; color: #8b949e; font-weight: 500; padding: 8px 6px; border-bottom: 1px solid #30363d; font-size: 11px; text-transform: uppercase; }
   td { padding: 8px 6px; border-bottom: 1px solid #21262d; vertical-align: middle; }
+  /* Reason cells stay one line; the full sentence lives in the title
+     tooltip (app.js shortenReason) so a row never becomes a billboard. */
+  td.reason-cell { max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: help; }
   tr.accept { background: rgba(35, 134, 54, 0.12); }
   /* A real match above threshold, just not the top-ranked one. Must read as
      supporting evidence, never as a rejection. */
@@ -172,8 +175,10 @@
           <tbody id="candidateBody"></tbody>
         </table>
         <div class="noise-note">
-          Scores below ~0.20 are statistical noise (measured non-match ceiling: 0.074),
-          not weak matches — see rules.md R-21.
+          Scores below ~0.20 are typically statistical noise, not weak matches — see rules.md R-21.
+          Non-match ceiling: pilot 0.074 (n=9, historical); live runs have since
+          measured up to ~0.14 (n=41, calibration/negatives_harvested.json) — still
+          well below the 0.42 threshold, but the pilot figure alone understated it.
         </div>
       </details>
     </div>

@@ -132,3 +132,65 @@ def test_off_allowlist_high_scorer_still_never_reported():
     assert result.best.candidate.page_url.startswith("https://www.reddit.com")
     variety = next(r for r in result.all_scored if "variety.com" in r.candidate.page_url)
     assert variety.decision == "reject-domain"
+
+
+# ---------------- G-series: NO_CANDIDATES, MATCH_NON_SOCIAL, unverifiable hits ----------------
+
+
+def test_no_scored_and_no_prerejected_is_no_candidates():
+    """Distinct from NO_MATCH: nothing was ever examined."""
+    result = score_candidates([], POLICY, allowed_domains=SOCIAL_ALLOW, prerejected=[])
+    assert result.verdict == "NO_CANDIDATES"
+    assert result.all_scored == []
+
+
+def test_high_scoring_domain_reject_produces_match_non_social():
+    """A candidate that would have passed threshold+margin but sits off the
+    allowlist must not collapse into a plain NO_MATCH — that would
+    contradict a caption reporting the same high score (found live 5 Sep
+    2026: both sentences rendered on screen at once)."""
+    scored = [
+        (_c("https://www.etnownews.com/article"), 0.97, 4),
+    ]
+    result = score_candidates(scored, POLICY, allowed_domains=SOCIAL_ALLOW)
+    assert result.verdict == "MATCH_NON_SOCIAL"
+    assert result.best is None
+    assert result.all_scored[0].decision == "reject-domain"
+
+
+def test_low_scoring_domain_reject_stays_plain_no_match():
+    scored = [
+        (_c("https://www.etnownews.com/article"), 0.05, 1),
+    ]
+    result = score_candidates(scored, POLICY, allowed_domains=SOCIAL_ALLOW)
+    assert result.verdict == "NO_MATCH"
+
+
+def test_unverifiable_platform_hits_populated_for_full_match_kind():
+    from pipeline.search.base import Candidate as _Cand
+    from pipeline.verify.matcher import score_candidates as _score
+
+    blocked_cand = _Cand(
+        image_url="https://lookaside.fbsbx.com/x", page_url="https://www.instagram.com/p/abc/",
+        source="gcv_web_detection", match_kind="full",
+    )
+    prerejected = [(blocked_cand, "reject-platform-blocked", "Meta serves media only to its own crawler")]
+    result = _score([], POLICY, allowed_domains=SOCIAL_ALLOW, prerejected=prerejected)
+    assert len(result.unverifiable_platform_hits) == 1
+    assert result.unverifiable_platform_hits[0].candidate is blocked_cand
+
+
+def test_unverifiable_platform_hits_excludes_similar_match_kind():
+    """Only full/partial matches are surfaced as "the search engine
+    asserts this is the same image" — a mere visual lookalike on a
+    platform-blocked domain is not a meaningful signal."""
+    from pipeline.search.base import Candidate as _Cand
+    from pipeline.verify.matcher import score_candidates as _score
+
+    lookalike_cand = _Cand(
+        image_url="https://lookaside.fbsbx.com/x", page_url="https://www.instagram.com/p/abc/",
+        source="gcv_web_detection", match_kind="similar",
+    )
+    prerejected = [(lookalike_cand, "reject-platform-blocked", "blocked")]
+    result = _score([], POLICY, allowed_domains=SOCIAL_ALLOW, prerejected=prerejected)
+    assert result.unverifiable_platform_hits == ()

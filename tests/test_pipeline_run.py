@@ -157,7 +157,12 @@ def test_no_match_when_all_candidates_are_different_people(detector, embedder, m
 
 def test_off_allowlist_candidate_never_reported_even_if_it_would_match(detector, embedder, monkeypatch):
     """design.md 2.5: a high-scoring candidate on a non-social domain must
-    be logged as rejected, never surfaced as the match."""
+    be logged as rejected, never surfaced as the ACCEPTed match. It IS
+    surfaced as MATCH_NON_SOCIAL rather than plain NO_MATCH, since this
+    candidate would have passed threshold+margin — the search DID find the
+    face convincingly, just not on a social platform. Reporting that as
+    "no match found ... honest outcome" would itself be dishonest (found
+    live 5 Sep 2026: two contradictory sentences rendered on screen at once)."""
     probe_vec, png = _probe(detector, embedder, FIX / "obama1.jpg")
 
     off_allowlist_url = "https://britannica.com/fake-obama-photo"
@@ -170,7 +175,8 @@ def test_off_allowlist_candidate_never_reported_even_if_it_would_match(detector,
 
     result = run_pipeline(png, probe_vec, [provider], detector, embedder, policy=POLICY)
 
-    assert result.match.verdict == "NO_MATCH"
+    assert result.match.verdict == "MATCH_NON_SOCIAL"
+    assert result.match.best is None, "never surfaced as an ACCEPTed match"
     assert result.match.all_scored[0].decision == "reject-domain"
 
 
@@ -243,7 +249,10 @@ def test_too_small_face_is_prerejected_not_scored(detector, embedder, monkeypatc
 
 def test_provider_error_does_not_abort_the_run(detector, embedder, monkeypatch):
     """R-14, exercised through run_pipeline: a raising provider still yields
-    a valid (NO_MATCH) result, not an exception."""
+    a valid result, not an exception. Verdict is NO_CANDIDATES rather than
+    NO_MATCH — no candidate was ever examined, since the only provider
+    raised. NO_MATCH implies candidates WERE examined and none matched,
+    which is a stronger and different claim than "the search never ran"."""
     probe_vec, png = _probe(detector, embedder, FIX / "obama1.jpg")
     monkeypatch.setattr("pipeline.verify.pipeline_run.get_http_cache", lambda: FakeHttpCache({}))
 
@@ -258,5 +267,173 @@ def test_provider_error_does_not_abort_the_run(detector, embedder, monkeypatch):
             raise RuntimeError("simulated provider failure")
 
     result = run_pipeline(png, probe_vec, [BrokenProvider()], detector, embedder, policy=POLICY)
-    assert result.match.verdict == "NO_MATCH"
+    assert result.match.verdict == "NO_CANDIDATES"
     assert result.provider_reports[0].error is not None
+
+
+def test_fallback_variant_is_used_when_primary_fails_to_fetch(detector, embedder, monkeypatch):
+    """G1: image_url_fallbacks recovers a candidate whose PRIMARY url 404s
+    (measured live: YouTube maxresdefault.jpg 404s for some videos), by
+    walking to the next largest variant that actually resolves."""
+    probe_vec, png = _probe(detector, embedder, FIX / "obama1.jpg")
+
+    primary_url = "https://i.ytimg.com/vi/deadbeef01a/maxresdefault.jpg"
+    fallback_url = "https://i.ytimg.com/vi/deadbeef01a/sddefault.jpg"
+    page_url = "https://www.youtube.com/watch?v=deadbeef01a"
+
+    fake_http = FakeHttpCache({fallback_url: FIX / "obama2.jpg"})  # primary absent -> 404-equivalent
+    _patch_http_cache(monkeypatch, fake_http)
+
+    provider = FakeProvider(
+        [
+            Candidate(
+                image_url=primary_url,
+                page_url=page_url,
+                source="fake",
+                image_url_fallbacks=(fallback_url,),
+            )
+        ]
+    )
+
+    result = run_pipeline(png, probe_vec, [provider], detector, embedder, policy=POLICY)
+
+    assert result.match.verdict == "MATCH"
+    assert result.match.best is not None
+    # The evidence-facing image_url must reflect the variant actually used,
+    # never the primary URL that 404'd.
+    assert result.match.best.candidate.image_url == fallback_url
+
+
+def test_platform_blocked_short_circuits_fallback_walk(detector, embedder, monkeypatch):
+    """A domain that refuses programmatic media access will refuse every
+    size variant identically (verified live), so the walk must stop at
+    the first blocked outcome rather than retrying smaller/larger sizes
+    of a URL that can never succeed."""
+    probe_vec, png = _probe(detector, embedder, FIX / "obama1.jpg")
+    _patch_http_cache(monkeypatch, FakeHttpCache({}))  # nothing resolves -> simulates the block
+
+    provider = FakeProvider(
+        [
+            Candidate(
+                image_url="https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=1",
+                page_url="https://www.instagram.com/p/DXmJY6plgbV/",
+                source="fake",
+                image_url_fallbacks=("https://lookaside.fbsbx.com/lookaside/crawler/media/?media_id=1&v=2",),
+            )
+        ]
+    )
+    result = run_pipeline(png, probe_vec, [provider], detector, embedder, policy=POLICY)
+    row = result.match.all_scored[0]
+    assert row.decision == "reject-platform-blocked"
+
+
+def test_non_image_bytes_get_an_honest_reason_not_reject_no_face(detector, embedder, monkeypatch):
+    """G1: a 200 response carrying an HTML stub (measured live on
+    lookaside.instagram.com / facebook.com URLs) must be reported as
+    reject-not-an-image, distinct from reject-no-face which claims we saw
+    an actual photo and found no face in it."""
+    probe_vec, png = _probe(detector, embedder, FIX / "obama1.jpg")
+
+    html_url = "https://example.com/looks-like-image.jpg"
+
+    class HtmlStubHttp:
+        def get(self, url, **kw):
+            class R:
+                ok = True
+                content = b"<html><body>not an image</body></html>"
+            return R()
+
+    monkeypatch.setattr("pipeline.verify.pipeline_run.get_http_cache", lambda: HtmlStubHttp())
+
+    provider = FakeProvider(
+        [Candidate(image_url=html_url, page_url=html_url, source="fake")]
+    )
+    result = run_pipeline(png, probe_vec, [provider], detector, embedder, policy=POLICY)
+
+    row = result.match.all_scored[0]
+    assert row.decision == "reject-not-an-image"
+    assert "not a decodable image" in row.reason
+
+
+def test_original_url_last_in_chain_still_rescues_the_candidate(detector, embedder, monkeypatch):
+    """R-23 end to end. The rewritten 'better' variants all fail, and only the
+    provider's ORIGINAL url resolves — which is exactly the live regression
+    (a /profile_images/ URL rewritten with the /media/ ?name= scheme produced
+    five 404s while the untouched original returned HTTP 200).
+
+    The candidate must be recovered, and the recorded image_url must be the
+    variant that actually worked, since that URL is what gets hashed into the
+    evidence bundle.
+    """
+    probe_vec, png = _probe(detector, embedder, FIX / "obama1.jpg")
+
+    rewritten_a = "https://pbs.twimg.com/profile_images/1/abc.jpg?name=orig"
+    rewritten_b = "https://pbs.twimg.com/profile_images/1/abc.jpg?name=large"
+    original = "https://pbs.twimg.com/profile_images/1/abc_400x400.jpg"
+
+    # Only the original resolves; both rewrites 404 (absent from the map).
+    fake_http = FakeHttpCache({original: FIX / "obama2.jpg"})
+    _patch_http_cache(monkeypatch, fake_http)
+
+    provider = FakeProvider(
+        [
+            Candidate(
+                image_url=rewritten_a,
+                page_url="https://x.com/someone",
+                source="fake",
+                image_url_fallbacks=(rewritten_b, original),
+            )
+        ]
+    )
+
+    result = run_pipeline(png, probe_vec, [provider], detector, embedder, policy=POLICY)
+
+    assert result.match.verdict == "MATCH", "the original URL must rescue this candidate"
+    assert result.match.best.candidate.image_url == original
+
+
+def test_fetch_failed_message_reports_variants_tried_not_just_the_last(
+    detector, embedder, monkeypatch
+):
+    """R-24. The old message named only the LAST (smallest) variant attempted,
+    which made a working size-variant fix look like it had never run. It must
+    name the primary and say how many were tried."""
+    probe_vec, png = _probe(detector, embedder, FIX / "obama1.jpg")
+    _patch_http_cache(monkeypatch, FakeHttpCache({}))  # nothing resolves
+
+    primary = "https://i.ytimg.com/vi/deadbeef01a/maxresdefault.jpg"
+    provider = FakeProvider(
+        [
+            Candidate(
+                image_url=primary,
+                page_url="https://www.youtube.com/watch?v=deadbeef01a",
+                source="fake",
+                image_url_fallbacks=(
+                    "https://i.ytimg.com/vi/deadbeef01a/sddefault.jpg",
+                    "https://i.ytimg.com/vi/deadbeef01a/hqdefault.jpg",
+                ),
+            )
+        ]
+    )
+    result = run_pipeline(png, probe_vec, [provider], detector, embedder, policy=POLICY)
+
+    row = result.match.all_scored[0]
+    assert row.decision == "reject-fetch-failed"
+    assert primary in row.reason, "must name the primary URL, not only the last tried"
+    assert "3 size variant(s)" in row.reason, "must disclose how many were attempted"
+
+
+def test_single_url_candidate_keeps_the_simple_fetch_failed_message(
+    detector, embedder, monkeypatch
+):
+    """No variant chain means no variant talk — the message stays plain."""
+    probe_vec, png = _probe(detector, embedder, FIX / "obama1.jpg")
+    _patch_http_cache(monkeypatch, FakeHttpCache({}))
+
+    provider = FakeProvider(
+        [Candidate(image_url="https://reddit.com/dead.jpg", page_url="https://reddit.com/r/x/c/d", source="fake")]
+    )
+    result = run_pipeline(png, probe_vec, [provider], detector, embedder, policy=POLICY)
+    row = result.match.all_scored[0]
+    assert row.decision == "reject-fetch-failed"
+    assert "size variant" not in row.reason

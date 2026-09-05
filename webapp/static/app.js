@@ -166,10 +166,43 @@ searchBtn.addEventListener("click", async () => {
   }
 });
 
+// Maps a (decision, full reason) pair to a short, table-friendly label.
+// The full reason is NEVER discarded (R-24) — it moves to the `title`
+// tooltip on the cell, not deleted. A row with a decision but no visible
+// reason (a bare "—") is exactly the ambiguity R-21 rule 4 forbids: the
+// viewer should never have to guess whether a dash means no-face,
+// too-small, or fetch-failed.
+function shortenReason(decision, reason) {
+  const platformMatch = /^([A-Za-z ]+?) serves media only/.exec(reason || "");
+  if (decision === "reject-platform-blocked" && platformMatch) {
+    return `platform-blocked (${platformMatch[1]})`;
+  }
+  if (decision === "reject-fetch-failed") return "fetch-failed";
+  if (decision === "reject-not-an-image") return "not-an-image";
+  if (decision === "reject-no-face") return "no-face";
+  if (decision === "reject-face-too-small") return "face-too-small";
+  if (decision === "reject-no-image") return "no-image-url";
+  if (decision === "reject-domain") return reason || decision;
+  if (decision === "reject-below-threshold") return reason || decision;
+  return reason || decision;
+}
+
+function escapeHtml(s) {
+  const div = document.createElement("div");
+  div.textContent = s || "";
+  return div.innerHTML;
+}
+
 function renderResults(data) {
   searchStatus.style.display = "none";
   resultSummary.style.display = "block";
 
+  // Four possible verdicts now (matcher.py): MATCH, NO_MATCH, NO_CANDIDATES,
+  // MATCH_NON_SOCIAL. Each gets its OWN headline copy — never a generic
+  // "isMatch ? X : Y" — because a generic NO_MATCH-shaped sentence next to
+  // a MATCH_NON_SOCIAL caption is exactly the contradiction found live 5
+  // Sep 2026: "No match found ... honest outcome" rendered simultaneously
+  // with "1 high-scoring non-social source also matched this face".
   const isMatch = data.verdict === "MATCH";
   verdictBadge.textContent = data.verdict;
   verdictBadge.className = "badge " + (isMatch ? "match" : "no-match");
@@ -181,21 +214,65 @@ function renderResults(data) {
   summaryText.textContent =
     `${corpusNote} Threshold ${data.threshold.toFixed(2)}, margin ${data.margin_required.toFixed(2)}.`;
 
-  // R-21: on NO_MATCH the verdict is the headline. Rejected candidates go
-  // behind a "show diagnostics" toggle, never presented as ranked suggestions.
   const corroborating = data.candidates.filter((c) => c.decision === "corroborating").length;
+  const unverifiable = data.unverifiable_platform_hits || [];
 
-  if (!isMatch) {
-    headlineNoMatch.style.display = "block";
+  // R-21: the verdict is the headline for every non-MATCH outcome.
+  // Rejected candidates go behind a "show diagnostics" toggle.
+  headlineNoMatch.style.display = "block";
+  if (data.verdict === "NO_CANDIDATES") {
+    headlineNoMatch.innerHTML =
+      `<strong>Search did not run.</strong> Every provider failed or returned no ` +
+      `candidates to examine — this is NOT the same claim as "no match found"; ` +
+      `nothing was actually searched. Check provider availability / API keys.`;
+  } else if (data.verdict === "MATCH_NON_SOCIAL") {
+    const nonSocial = data.candidates.filter(
+      (c) => c.decision === "reject-domain" && c.score !== null && c.score >= data.threshold
+    );
+    const domains = nonSocial
+      .slice(0, 3)
+      .map((c) => { try { return new URL(c.page_url).hostname.replace("www.", ""); } catch { return c.source; } })
+      .join(", ");
+    headlineNoMatch.innerHTML =
+      `<strong>Match found, but not on a social platform.</strong> ` +
+      `${nonSocial.length} high-scoring source(s) (e.g. ${domains}) matched this face ` +
+      `convincingly, but the brief asks for a social media post specifically, so this is ` +
+      `reported as its own outcome rather than counted as the match.`;
+  } else if (data.verdict === "NO_MATCH") {
     headlineNoMatch.innerHTML =
       `<strong>No match found.</strong> None of ${data.candidates.length} candidate(s) scored ` +
       `above the threshold with sufficient margin. This is a correct, honest outcome — ` +
-      `not every face has a matching public post.`;
+      `not every face has a matching public post.` +
+      (unverifiable.length > 0
+        ? ` <strong>${unverifiable.length} platform-blocked hit(s)</strong> ` +
+          `(${[...new Set(unverifiable.map((h) => h.source))].join(", ")}) — the search ` +
+          `engine reported this image on those platforms, but they serve media only to ` +
+          `their own crawler, so the face could not be independently re-verified. ` +
+          `Recorded, not accepted.`
+        : "");
   } else {
     headlineNoMatch.style.display = "none";
+  }
+
+  if (isMatch) {
     if (corroborating > 0) {
       summaryText.textContent +=
         ` Plus ${corroborating} corroborating match(es) above threshold.`;
+    }
+    // Distinct from MATCH_NON_SOCIAL: this is a REAL accepted match that
+    // ALSO has high-scoring non-social corroboration (news coverage etc).
+    const supplementary = data.candidates.filter(
+      (c) => c.decision === "reject-domain" && c.score !== null && c.score >= 0.5
+    );
+    if (supplementary.length > 0) {
+      const domains = supplementary
+        .slice(0, 3)
+        .map((c) => { try { return new URL(c.page_url).hostname.replace("www.", ""); } catch { return c.source; } })
+        .join(", ");
+      summaryText.textContent +=
+        ` ${supplementary.length} high-scoring non-social source(s) (e.g. ${domains}) also ` +
+        `matched this face but are not social media posts, so they are excluded from the ` +
+        `result rather than counted as the match.`;
     }
   }
 
@@ -203,7 +280,7 @@ function renderResults(data) {
   diagnosticsSummary.textContent = isMatch
     ? `show diagnostics (${data.candidates.length} candidate(s) examined` +
       (corroborating > 0 ? `, ${corroborating} corroborating` : "") + `)`
-    : `show diagnostics (${data.candidates.length} rejected candidate(s) — noise, not suggestions)`;
+    : `show diagnostics (${data.candidates.length} candidate(s) examined — noise, not suggestions)`;
   candidateTable.style.display = "table";
 
   candidateBody.innerHTML = "";
@@ -212,7 +289,19 @@ function renderResults(data) {
     return;
   }
 
-  for (const c of data.candidates) {
+  // Lead with the accept, then corroboration, then everything else in the
+  // order the pipeline examined it. Previously rows rendered in raw
+  // pipeline order, so a real ACCEPT could sit at row 20 of 44 behind a
+  // wall of noise — technically visible, but confusing enough in practice
+  // that "if everything's rejected, what's accepted?" was a real question
+  // asked against a run that DID match. Decision order is the only thing
+  // that changes; scores and reasons are untouched.
+  const decisionRank = { ACCEPT: 0, corroborating: 1 };
+  const ordered = [...data.candidates].sort(
+    (a, b) => (decisionRank[a.decision] ?? 2) - (decisionRank[b.decision] ?? 2)
+  );
+
+  for (const c of ordered) {
     const tr = document.createElement("tr");
     if (c.decision === "ACCEPT") tr.classList.add("accept");
     // 'corroborating' is a real match above threshold, just not the
@@ -229,13 +318,21 @@ function renderResults(data) {
       ? `<a href="${c.page_url}" target="_blank" rel="noopener">${c.page_url.replace("https://", "")}</a>`
       : "—";
 
+    // Reason cell: a short, scannable label in the cell itself, full
+    // sentence in a `title` tooltip. Found live 5 Sep 2026: the
+    // platform-blocked reason sentence is long enough to turn a table row
+    // into a multi-line billboard, which defeats the point of a scannable
+    // diagnostics table on a recording. Every row still carries the FULL
+    // reason (never dropped, R-24) — just not inline at full length.
+    const shortReason = shortenReason(c.decision, c.reason);
+
     tr.innerHTML = `
       <td>${c.rank + 1}</td>
       <td>${scoreCell}</td>
       <td>${c.source}</td>
       <td>${postCell}</td>
       <td>${c.decision}</td>
-      <td style="color:#8b949e;">${c.reason}</td>
+      <td class="reason-cell" style="color:#8b949e;" title="${escapeHtml(c.reason)}">${shortReason}</td>
     `;
     candidateBody.appendChild(tr);
   }

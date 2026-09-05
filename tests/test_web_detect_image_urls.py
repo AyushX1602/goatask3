@@ -112,3 +112,43 @@ def test_real_image_url_still_preferred_over_derivation():
     }
     cands, _ = parse_gcv(payload)
     assert cands[0].image_url == "https://i.ytimg.com/vi/real/hq.jpg"
+
+
+# ---------------- G1: size-variant resolution at parse time ----------------
+#
+# Applied at parse time, not fetch time, so the URL recorded on a candidate
+# (and later hashed into the evidence bundle, evidence/bundle.py) is always
+# the exact URL that will actually be scored — never a smaller/unverified
+# variant that happened to arrive first from the provider.
+
+
+def test_gcv_standalone_x_image_is_resolved_to_orig_with_fallbacks():
+    payload = {
+        "webDetection": {
+            "fullMatchingImages": [
+                {"url": "https://pbs.twimg.com/media/HRSsRstbMAEzQxl.jpg?format=jpg&name=thumb"},
+            ]
+        }
+    }
+    cands, _ = parse_gcv(payload)
+    assert cands[0].image_url.endswith("name=orig")
+    assert [u.split("name=")[1] for u in cands[0].image_url_fallbacks] == [
+        "large", "medium", "small", "thumb",
+    ]
+
+
+def test_gcv_youtube_shorts_page_gets_maxres_first_with_fallback_chain():
+    payload = {
+        "webDetection": {
+            "pagesWithMatchingImages": [
+                {"url": "https://www.youtube.com/shorts/V8UwSQAPDxs", "pageTitle": "a short"},
+            ]
+        }
+    }
+    cands, _ = parse_gcv(payload)
+    assert cands[0].image_url == "https://i.ytimg.com/vi/V8UwSQAPDxs/maxresdefault.jpg"
+    assert cands[0].image_url_fallbacks == (
+        "https://i.ytimg.com/vi/V8UwSQAPDxs/sddefault.jpg",
+        "https://i.ytimg.com/vi/V8UwSQAPDxs/hqdefault.jpg",
+        "https://i.ytimg.com/vi/V8UwSQAPDxs/mqdefault.jpg",
+    )

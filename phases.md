@@ -99,14 +99,150 @@ Remaining effort ≈ 8–10 focused hours. Face core is **done, do not touch it*
 | **F5** | Image upload input: `POST /api/upload` (D-19) | ✅ DONE. CLI `--image PATH` not yet added — UI path proven live instead |
 | **F6** | UI correctness pass (R-21, D-24) | ✅ DONE. NO_MATCH headline + diagnostics toggle, 3-state liveness rendering |
 | **F7** | `evidence/canonical.py` + `bundle.py` + salted commitment (D-26) | ✅ DONE. Live: real MATCH produced `0xef13f0ea...`, independently recomputed from the persisted file, byte-identical. No floats in hashed output (enforced, not just avoided) |
-| **F8** | `contracts/EvidenceRegistry.sol` + Foundry + Anvil deploy (D-27) | **STOPPED HERE per owner instruction** — blockchain phase, not started |
-| **F9** | `chain/evm.py` + **the tamper demo** | `verify` PASSes on an untouched bundle; a one-character edit reports `TAMPERED` with a non-zero exit code |
-| **F10** | README front door, `docs/` move (D-33), 2–3 sample runs incl. a real `NO_MATCH` | Clean clone + install + run works; README covers what / how-to-run / which-chain / limitations |
-| **F11** | Screen recording | One take: detect → search → candidate table → real post in browser → anchor → verify PASS → tamper FAIL → `NO_MATCH` run |
+| **F8** | `contracts/EvidenceRegistry.sol` + Foundry + Anvil deploy (D-27) | ✅ DONE. Foundry v1.8.1 (precompiled win32 zip, not the bash installer). Deployed live to Anvil at `0x5FbDB2315678afecb367f032d93F642f64180aa3`. 8 Foundry tests green |
+| **F9** | `chain/evm.py` + **the tamper demo** | ✅ DONE, observed live. SRK match → `anchor` → `tx=0xef23bf9f...` block 11 → `verify` → **PASS exit 0** → edited one character in `evidence.json` → **TAMPERED exit 1** → restored → PASS |
+| **F10** | README front door, `docs/` move (D-33), 2–3 sample runs incl. a real `NO_MATCH` | ⬜ NOT DONE. See G2/G3 below |
+| **F11** | Screen recording | ⬜ NOT DONE. See G6 below |
 
 **Optional, only if F1–F11 are solid:** SerpApi secondary provider (needs S3 presigned URL, D-31) → Base Sepolia bonus anchor.
 
 **Never cut:** candidate rejection table · tamper demo · committed `NO_MATCH` run · audit log · README limitations.
+
+---
+
+# G-SERIES — post-F9 recall & submission plan (5 Sep 2026, owner-approved)
+
+All three brief requirements are met and verified live as of F9. The G-series
+is (a) recovering measured recall we were silently discarding, and (b) the
+remaining submission artifacts. Rationale in `memory.md` §3f–3g (D-34..D-38).
+
+Ordering rationale: **G1 before G2/G3/G6.** G1 changes what the demo shows,
+and the README, sample runs and recording all document post-G1 behaviour.
+Writing the README first means writing it twice.
+
+| # | Step | Status | Exit criterion (must be executed and observed) |
+|---|---|---|---|
+| **G1** | Recall & honesty fixes — X `?name=` variant, YouTube tier fallback, Shorts regex, truthful `reject-not-an-image`, diagnostics ordering | ✅ DONE, verified live | X went from discarded (32px face, below gate) to **the best match in the run at 0.9806**. YouTube 404→`sddefault` fallback and `/shorts/` both confirmed. All 11 Meta/TikTok rows now read `reject-platform-blocked`, not `reject-no-face`. 122 tests |
+| **G1.1** | **Regression fix (R-23/R-24).** Split `pbs.twimg.com` by path: `/media/` = `?name=` scheme, `/profile_images/` = filename-suffix scheme. Additive-only chain. Fetch-failed message reports variants tried | 🔧 IN PROGRESS | A `/profile_images/` URL resolves and scores instead of producing five 404s. A property test asserts the provider's original URL survives in the chain **for every platform**, not just X. The `x.com/henry_kutrieb` run that produced a false `NO_MATCH` produces a scored candidate |
+| **G1.2** | `content_kind` labelling — `post` vs `profile` vs `unknown`, carried into the evidence bundle | ⬜ TODO | An accepted profile match is cited as a profile, not passed off as a "post". Schema version bumped if the bundle shape changes (R-02) |
+| **G1.3** | Inline tamper demo — run the tamper check automatically at the end of an anchored run | ⬜ TODO | A single command shows PASS then TAMPERED without a second manual invocation. Closes the self-demonstration gap vs SAJITH07N |
+| **G2** | **Root `README.md`** — required by the brief | ⬜ TODO | Clean clone + `pip install` + `fetch_models.py` runs. Covers what it does / how to run / which chain and why local is allowed / limitations incl. the verified Meta-TikTok wall **and** the twimg dual-scheme finding |
+| **G3** | Commit 2–3 curated sample runs incl. a genuine `NO_MATCH` (R-16) | ⬜ TODO | A judge can inspect real `audit.json` + `evidence.json` + `anchor.json` without an API key |
+| **G4** | *(optional)* Wire `anchor`/`verify` buttons into the demo UI | ⬜ TODO | The recording flows without switching to a terminal. Likely absorbs G1.3 |
+| **G5** | *(optional, weakest)* Threshold calibration to retire the `0.42` placeholder | ⬜ TODO | **Recommended SKIP.** Calibration without a proper benchmark set produces a number that *looks* more rigorous than it is. Current disclosure (0.42 default shown against the measured 0.765-vs-0.074 separation, explicitly labelled not benchmark-calibrated) is more honest than a hand-tuned replacement |
+| **G6** | Screen recording (= F11) | ⬜ TODO | One take: face scan → search → real post → anchor → verify PASS → tamper FAIL → `NO_MATCH` run |
+
+**Explicitly rejected for the G-series:** a manual "paste a content URL"
+escape hatch (as `ivocreates/facechain` offers). It would have rescued the
+failed `x.com` run, but it weakens the brief's "genuine search step, not a
+hardcoded/pre-picked result" claim — the requirement most likely to be
+scrutinised. Fix fetch coverage instead of adding a human override. See D-38.
+
+---
+
+## G1.1 — twimg dual-scheme regression fix — ✅ DONE
+
+Fixed the false `NO_MATCH` on a real non-celebrity probe (`x.com/henry_kutrieb`).
+`pbs.twimg.com` runs two mutually exclusive sizing schemes on one domain
+(`/media/...?name=`, `/profile_images/..._suffix`); the first cut of the X fix
+applied the `/media/` scheme to a `/profile_images/` URL and turned a working
+HTTP 200 into five 404s. Fixed in `pipeline/search/media_urls.py` with a new
+binding invariant (R-23): the provider's original URL must always survive in
+any rewritten fallback chain. Verified live — the recovered candidate now
+resolves the bare-filename variant (18136 bytes, 400x400, face 147px) on the
+first attempt. `tests/test_media_urls.py` (20 tests) asserts R-23 as a generic
+property over every known URL shape, not per-platform. `tests/test_pipeline_run.py`
+gained the end-to-end regression case plus a fetch-failed-message test (R-24).
+
+## Tier 0 — schema v2 + image-hash population — ✅ DONE (5 Sep 2026)
+
+A second, independent defect found in the same review pass, more serious
+than G1.1: **every previously anchored run had `match.image_sha256 == ""`**
+because no provider (GCV or Bluesky) ever populated it, and `chain/evm.py`
+silently zero-filled the on-chain `imageHash` with `"0" * 64` rather than
+failing. A judge reading `evidence.json` next to the block explorer would
+have found this in seconds and it would have discredited the tamper-demo
+verifier entirely.
+
+Fix, six tests written first (all initially failing, then made to pass):
+
+- `PipelineResult.best_image_bytes` — the actual bytes fetched and scored
+  for the winning candidate, threaded out of `run_pipeline()`'s existing
+  `images` dict rather than discarded once scoring finishes. One path, both
+  providers — no Bluesky-specific exemption (confirmed Bluesky had the
+  identical gap before assuming otherwise).
+- `build_evidence(..., image_bytes: bytes)` is now a required, explicit
+  argument with **no fallback**. Raises `ValueError` on empty/None. Computes
+  both `image_sha256` (already existed, was simply never fed real input) and
+  a new `image_phash` — same `imagehash` library and Hamming convention as
+  `verify/dedupe.py`, so a future re-fetch check's "perceptually identical"
+  verdict means the same thing in both places.
+- `chain/evm.py`'s `anchor()` deleted the `or "0" * 64` fallback outright and
+  raises instead. Guarded by both a behavioural test and a source-level grep
+  test (the expression must not exist, not just be unreachable).
+- **Schema bumped to v2** in one combined pass, done deliberately before any
+  sample run is committed: `post.content_kind` (post/profile/unknown, never
+  null — see verify/allowlist.content_kind), `match.image_phash`,
+  `match.verified_against` (search_engine_cache/platform_origin). A stale
+  half-written docstring had claimed a "v2" that `SCHEMA_VERSION` and the
+  code did not actually implement — the exact doc-vs-code lie R-24 exists to
+  prevent. Fixed alongside the real bump, and a test now asserts the
+  docstring never references a version number higher than `SCHEMA_VERSION`.
+- `get_http_cache()`'s docstring claimed hit/miss stats "land in the audit
+  log"; they never did. `build_audit()` now takes optional per-provider
+  `cache_stats` and computes an aggregate; `webapp/server.py` snapshots
+  `http.stats()` before/after each provider call.
+- `runs/` deleted (not migrated) — confirmed untracked in git first. Every
+  run in it had a v1 bundle and a zero `imageHash`.
+
+**Verified against the real running Anvil chain, not mocks:** all 12
+`test_chain_evm.py`/`test_reverify.py` tests pass, meaning the anchor→verify→
+tamper round trip now anchors a genuinely non-zero `imageHash`. Full suite:
+145 passed. pyflakes clean (same handful of pre-existing unrelated warnings).
+
+## Tier 1 — re-fetch check, verdicts, headline selection — PARTIALLY DONE (5 Sep 2026)
+
+Triggered by two real, genuine-search test runs (a private individual found
+via face alone through GitHub, and a probe suspected to be a synthetic/AI
+avatar) that surfaced defects live, on screen, faster than the plan had
+gotten to them. See `memory.md` §3m for the full narrative.
+
+| # | Item | Status | Notes |
+|---|---|---|---|
+| `NO_CANDIDATES` verdict | ✅ DONE | Distinct from `NO_MATCH` — every provider failed/returned nothing vs candidates were examined and none matched. `score_candidates([], ..., prerejected=[])` returns it directly |
+| `MATCH_NON_SOCIAL` verdict | ✅ DONE | Fires when the best domain-rejected candidate would have passed threshold+margin. Closes a live UI contradiction: the banner said "No match found ... honest outcome" while the caption said "1 high-scoring non-social source also matched" — both on screen at once |
+| Allowlist principle + GitHub added | ✅ DONE | R-06 in `rules.md`: a platform qualifies iff an individual maintains a public identity profile and publishes content under it. `github.com`/`githubusercontent.com` added under this test — was missing by oversight, not by considered exclusion, once compared against `linkedin.com` already being allowed |
+| GitHub repo→profile page_url derivation | ✅ DONE | `media_urls.derive_github_profile_url`: `github.com/<user>/<repo>` → `page_url=github.com/<user>`, original repo URL kept as `raw["found_on"]`. `content_kind` classifies a bare GitHub profile as `profile`, never `post` |
+| `Candidate.match_kind` | ✅ DONE | `"full"` \| `"partial"` \| `"similar"` \| `""`, from GCV's own `fullMatchingImages`/`partialMatchingImages`/`visuallySimilarImages` classification. R-03: never used to accept/reject, reporting only |
+| `MatchResult.unverifiable_platform_hits` | ✅ DONE | Candidates with `match_kind` full/partial that are also `reject-platform-blocked` — surfaced as a caveat on top of whatever verdict applies, not a sixth verdict state. UI renders it as a mandatory clause on the `NO_MATCH` banner |
+| TikTok endpoint-vs-domain block fix | ✅ DONE | `tiktok.com/api/img/...` is blocked; `tiktokcdn-us.com` signed CDN URLs are fetchable (verified live in the same run, score 0.0593). `is_media_blocked` now checks path prefix for TikTok specifically rather than blocking the whole platform |
+| Stale `0.074` ceiling copy | ✅ DONE | Two live runs measured up to 0.1385 (n=9 pilot was always too small). UI footer, `rules.md` R-21 rationale updated to cite both figures honestly rather than repeating the stale single number next to a table that visibly contradicted it |
+| Negatives harvest | ✅ DONE | `calibration/negatives_harvested.json` — 41 genuine negatives across two runs + the 68px YouTube Short false negative, each `label_source: "manual_inspection"` |
+| Consent quarantine | ✅ DONE | The two runs (private individual; suspected-synthetic avatar) moved to `calibration/quarantine/` (gitignored), page/image URLs replaced with sha256, never committed, never used in the recording |
+| Diagnostics reason-column fix | ✅ DONE | Full reason moved to a `title` tooltip; visible cell text is short and non-wrapping (`shortenReason()` in `app.js`). No row can show a bare `—` with no visible reason (R-21 rule 4) |
+| Re-fetch verifier check | ⬜ NOT STARTED | 4 states: `PASS`, `PASS_PERCEPTUAL` (sha256 differs, phash Hamming ≤ 6 — CDN re-encode), `CONTENT_CHANGED` (Hamming > 6), `UNREACHABLE`. Origin-URL-first capped to the two known mappings (twimg `?name=orig`, YouTube `maxresdefault`) — do not build a general origin-resolver. `refetched_from` recorded separately from `verified_against`. **Budget cap: if this runs past 2h, ship the four states without origin-first and document as a limitation.** |
+| Headline selection (citability sort) | ⬜ NOT STARTED | Pure presentation sort over the D-35 identity cluster: `max(cluster, key=(citability_rank, content_kind_rank, score))`. Citability: openable platform page > bare CDN media URL. Content kind: post > profile > unknown. Score never re-enters the accept decision — R-03/D-35 stay intact |
+| SerpApi `image` over `thumbnail` | ⬜ NOT STARTED | One-line fix in `web_detect.py`'s `parse_serpapi_lens` |
+
+**Test methodology change (owner-approved):** stop sampling random X avatars
+for testing — they are disproportionately synthetic, stolen, or of people
+with zero footprint, and a genuine positive found this way can never be
+published. Build a deliberate test set instead: 2–3 consenting teammates
+(closes the loop legitimately — GitHub profile links to the account the
+photo came from), 3 public figures (the `post`-case, brief-literal
+satisfaction), 1 known-synthetic face (a designed, publishable `NO_MATCH`).
+
+**Recording order, revised:** lead with a consenting teammate found by face
+alone (the strongest genuineness proof — no name Google could leak), then a
+public figure (satisfies the brief's literal "post" wording + shows
+consensus across platforms), then the tamper demo.
+
+**Then, unchanged from before:** G2 (README, required), G3 (sample runs incl.
+`NO_MATCH`, generated only after Tier 1 fully lands so nothing bakes in stale
+shape), G4 (tamper endpoint + UI anchor/verify buttons), ~~G5~~ (skip —
+replaced by the live score-vs-face-size table + measured false negative),
+G6 (recording, preceded by the deliberate test set above under
+`HTTP_CACHE=0`).
 
 ---
 

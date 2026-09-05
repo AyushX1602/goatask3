@@ -21,7 +21,15 @@ def build_audit(
     liveness: dict,
     provider_reports: list[ProviderReport],
     match: MatchResult,
+    cache_stats: dict[str, dict[str, int]] | None = None,
 ) -> dict:
+    """cache_stats: optional per-provider {"hits": N, "misses": N}. Exists
+    because pipeline.cache.http_cache.get_http_cache()'s own docstring
+    claims hit/miss stats "land in the audit log" — before this parameter
+    existed, that claim was false; build_audit() never referenced them.
+    Recording-day discipline (G1.6) depends on this being real: a replayed
+    (all-cache-hit) run must be visibly distinguishable from a live one.
+    """
     candidates = []
     for rank, r in enumerate(match.all_scored):
         candidates.append(
@@ -37,7 +45,7 @@ def build_audit(
             }
         )
 
-    return {
+    audit = {
         "run_id": run_id,
         "started_at": started_at,
         "liveness": liveness,
@@ -47,6 +55,16 @@ def build_audit(
         "threshold": match.threshold,
         "margin_required": match.margin_required,
     }
+
+    if cache_stats:
+        total_hits = sum(s.get("hits", 0) for s in cache_stats.values())
+        total_misses = sum(s.get("misses", 0) for s in cache_stats.values())
+        audit["cache"] = {
+            **cache_stats,
+            "aggregate": {"hits": total_hits, "misses": total_misses},
+        }
+
+    return audit
 
 
 def write_audit(run_dir: Path, audit: dict) -> Path:

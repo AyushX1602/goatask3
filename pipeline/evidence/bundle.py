@@ -6,23 +6,54 @@ build its own dict, or drift between "what we anchored" and "what we
 verify against" becomes possible (the classic hash-anchoring demo failure,
 design.md 4.1).
 
-schema_version is frozen at 1 once this lands in a committed sample run
+schema_version is frozen once this lands in a committed sample run
 (rules.md R-02). Any structural change after that requires a version bump,
 not an in-place edit.
+
+**v2 (5 Sep 2026)** — three additions, bumped together deliberately BEFORE
+any sample run under G3 is committed, since a second bump after that would
+mean regenerating every committed bundle and its anchored on-chain hash:
+
+  - `post.content_kind` — "post" | "profile" | "unknown", never null. The
+    brief asks for a "social media post"; a profile page is not one. See
+    verify/allowlist.content_kind for why profiles are accepted (rather
+    than dropped) and reported honestly instead of overclaimed.
+  - `match.image_phash` — 64-bit perceptual hash (16 hex chars) of the
+    SAME bytes hashed into image_sha256, using the identical `imagehash`
+    library and Hamming-distance convention as verify/dedupe.py, so a
+    later re-fetch check's "perceptually identical" verdict means the
+    same thing here as it does during deduplication.
+  - `match.verified_against` — "search_engine_cache" | "platform_origin".
+    Records which URL was actually fetched and scored, since GCV/SerpApi
+    sometimes serve their own cached copy rather than the platform's.
+
+  Fixes a real defect found in every previously anchored run: this module
+  used to read `post_meta.get("image_sha256", "")`, but no provider ever
+  wrote that key, so `match.image_sha256` was ALWAYS the empty string, and
+  `chain/evm.py` silently zero-filled it on-chain (`imageHash` = 64 zeros
+  in every anchored record). `image_bytes` is now a required, explicit
+  argument to build_evidence() — the bytes that were actually scored, with
+  no fallback and no default. Passing empty/None bytes raises rather than
+  producing a bundle with a meaningless hash field.
 """
 
 from __future__ import annotations
 
 import hashlib
+import io
 import time
 from dataclasses import dataclass
+
+import imagehash
+from PIL import Image
 
 from pipeline.evidence.canonical import canonical_bytes, evidence_hash_hex
 from pipeline.evidence.commitment import face_commitment_hex
 from pipeline.face.types import Embedding, LivenessResult
+from pipeline.verify.allowlist import content_kind
 from pipeline.verify.matcher import MatchResult
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -52,6 +83,8 @@ def build_evidence(
     identity_signals: list[str],
     candidates_examined: int,
     pipeline_version: str,
+    image_bytes: bytes | None,
+    verified_against: str = "search_engine_cache",
     captured_at: int | None = None,
 ) -> EvidenceBundle:
     """Builds and hashes an evidence bundle for an ACCEPTed match.
@@ -59,11 +92,32 @@ def build_evidence(
     Raises ValueError if match.verdict != "MATCH" — there is nothing to
     anchor for a NO_MATCH run (rules.md R-16: NO_MATCH is a valid outcome,
     but it produces no evidence bundle, only an audit log entry).
+
+    image_bytes: the ACTUAL bytes that were fetched and scored for the
+    winning candidate (see verify/pipeline_run.py's PipelineResult.
+    best_image_bytes). Required and must be non-empty — there is no
+    fallback. A match with no provable image bytes is a bug upstream, and
+    it must fail loudly here rather than anchor a record whose headline
+    hash field is meaningless (see the module docstring for the defect
+    this replaced: every previously anchored run had image_sha256 == "").
+
+    verified_against: "search_engine_cache" (the default — most GCV/
+    SerpApi hits are the provider's own cached/served copy) or
+    "platform_origin" when the candidate's URL was confirmed to be the
+    platform's own CDN/origin rather than a provider-served proxy.
     """
     if match.verdict != "MATCH" or match.best is None:
         raise ValueError(
             "build_evidence requires an accepted match; NO_MATCH runs are "
             "recorded in the audit log only (R-16), never as an evidence bundle"
+        )
+
+    if not image_bytes:
+        raise ValueError(
+            "build_evidence requires non-empty image_bytes — the bytes actually "
+            "scored for the winning candidate. No fallback exists deliberately: "
+            "a bundle whose image_sha256 cannot be computed must not be built, "
+            "let alone anchored (see the module docstring)."
         )
 
     best = match.best
@@ -84,7 +138,9 @@ def build_evidence(
         "match": {
             "page_url": best.candidate.page_url,
             "image_url": best.candidate.image_url,
-            "image_sha256": post_meta.get("image_sha256", ""),
+            "image_sha256": image_sha256(image_bytes),
+            "image_phash": image_phash(image_bytes),
+            "verified_against": verified_against,
             "provider": best.candidate.source,
             "score_bps": _score_bps(best.score),
             "margin_bps": _score_bps(margin),
@@ -92,6 +148,7 @@ def build_evidence(
         },
         "post": {
             "platform": post_meta.get("platform", best.candidate.source),
+            "content_kind": content_kind(best.candidate.page_url, best.candidate.image_url),
             "author_handle": post_meta.get("author_handle", ""),
             "author_display": post_meta.get("author_display", ""),
             "text": post_meta.get("text", ""),
@@ -143,3 +200,25 @@ def _to_unix_seconds(value) -> int:
 
 def image_sha256(image_bytes: bytes) -> str:
     return hashlib.sha256(image_bytes).hexdigest()
+
+
+def image_phash(image_bytes: bytes) -> str:
+    """64-bit perceptual hash, 16 hex characters, using the SAME library
+    and convention as verify/dedupe.py's max_hamming comparison, so a
+    future re-fetch check's "perceptually identical" verdict (Hamming
+    distance <= dedupe's max_hamming) means the same thing here as it
+    does during candidate deduplication.
+
+    Raises ValueError if the bytes are not decodable as an image — this
+    must never silently return an empty or placeholder hash, per the same
+    reasoning as image_sha256. By the time this is called from
+    build_evidence(), the bytes have already been through cv2.imdecode
+    successfully upstream (verify/pipeline_run.py), so a failure here
+    would mean OpenCV and Pillow disagree on decodability, which is worth
+    surfacing loudly rather than masking.
+    """
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        return str(imagehash.phash(img))
+    except Exception as e:
+        raise ValueError(f"image_bytes could not be perceptually hashed: {e}") from e

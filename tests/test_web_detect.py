@@ -239,3 +239,102 @@ def test_gcv_backend_sends_base64_and_parses(monkeypatch):
     assert req["features"][0]["type"] == "WEB_DETECTION"
     assert req["image"]["content"], "image must be sent as base64 content"
     assert "Barack Obama" in p.last_identity_signals
+
+
+# ---------------- G-series: match_kind, GitHub profile rewrite ----------------
+
+
+def test_full_matching_image_gets_match_kind_full():
+    payload = {
+        "webDetection": {
+            "pagesWithMatchingImages": [
+                {
+                    "url": "https://github.com/SilenNaihin/isomorphic",
+                    "fullMatchingImages": [{"url": "https://avatars.githubusercontent.com/u/1?v=4"}],
+                }
+            ]
+        }
+    }
+    cands, _ = parse_gcv(payload)
+    assert cands[0].match_kind == "full"
+
+
+def test_github_repo_page_url_is_rewritten_to_profile():
+    """Verified live 5 Sep 2026: GCV returned page_url =
+    github.com/<user>/<repo> for a real candidate. The avatar belongs to
+    the user's profile, not the repo, so page_url must be rewritten before
+    the allowlist/content_kind layers ever see it."""
+    payload = {
+        "webDetection": {
+            "pagesWithMatchingImages": [
+                {
+                    "url": "https://github.com/SilenNaihin/isomorphic",
+                    "fullMatchingImages": [{"url": "https://avatars.githubusercontent.com/u/1?v=4"}],
+                }
+            ]
+        }
+    }
+    cands, _ = parse_gcv(payload)
+    assert cands[0].page_url == "https://github.com/SilenNaihin"
+    assert cands[0].raw["found_on"] == "https://github.com/SilenNaihin/isomorphic"
+
+
+def test_github_bare_profile_page_is_not_rewritten():
+    payload = {
+        "webDetection": {
+            "pagesWithMatchingImages": [
+                {
+                    "url": "https://github.com/SilenNaihin",
+                    "fullMatchingImages": [{"url": "https://avatars.githubusercontent.com/u/1?v=4"}],
+                }
+            ]
+        }
+    }
+    cands, _ = parse_gcv(payload)
+    assert cands[0].page_url == "https://github.com/SilenNaihin"
+    assert cands[0].raw["found_on"] is None
+
+
+def test_visually_similar_image_gets_match_kind_similar():
+    payload = {"webDetection": {"visuallySimilarImages": [{"url": "https://real.test/lookalike.jpg"}]}}
+    cands, _ = parse_gcv(payload)
+    assert cands[0].match_kind == "similar"
+
+
+# ---------------- F-05 fix: prefer full-size image over thumbnail ----------------
+
+
+def test_serpapi_visual_match_prefers_image_over_thumbnail():
+    """Ordering was previously backwards (`thumbnail or image`), and
+    thumbnails are small enough to routinely fail the 50px face-quality
+    gate. `image` (full-size) must win when both are present."""
+    payload = {
+        "visual_matches": [
+            {"link": "https://a.test/1", "thumbnail": "https://img.test/thumb.jpg", "image": "https://img.test/full.jpg"},
+        ]
+    }
+    cands, _ = parse_serpapi_lens(payload)
+    assert cands[0].image_url == "https://img.test/full.jpg"
+    assert cands[0].raw["image_field_used"] == "image"
+
+
+def test_serpapi_visual_match_falls_back_to_thumbnail_when_no_full_image():
+    payload = {
+        "visual_matches": [
+            {"link": "https://a.test/1", "thumbnail": "https://img.test/thumb.jpg"},
+        ]
+    }
+    cands, _ = parse_serpapi_lens(payload)
+    assert cands[0].image_url == "https://img.test/thumb.jpg"
+    assert cands[0].raw["image_field_used"] == "thumbnail"
+
+
+def test_serpapi_organic_result_prefers_images_array_over_thumbnail():
+    payload = {
+        "organic_results": [
+            {"link": "https://a.test/1", "thumbnail": "https://img.test/thumb.jpg", "images": ["https://img.test/full.jpg"]},
+        ]
+    }
+    cands, _ = parse_serpapi_lens(payload)
+    assert cands[0].image_url == "https://img.test/full.jpg"
+    assert cands[0].raw["image_field_used"] == "images[0]"

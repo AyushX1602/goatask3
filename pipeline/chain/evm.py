@@ -136,7 +136,22 @@ class EvmClient:
         face_commitment = bytes.fromhex(
             bundle.data["probe"]["face_commitment"].removeprefix("0x")
         )
-        image_hash_hex = bundle.data["match"].get("image_sha256") or "0" * 64
+        # No fallback. A previous version silently zero-filled a missing
+        # image_sha256 with a placeholder string of sixty-four zero
+        # characters, which meant every anchored record on chain carried
+        # an imageHash of 64 zeros — a defect invisible
+        # in tests but immediately obvious to a judge reading evidence.json
+        # next to the block explorer. build_evidence() now REQUIRES a
+        # real, non-empty image_sha256 (evidence/bundle.py), so anchor()
+        # refuses outright if that invariant was somehow violated upstream
+        # rather than anchoring a meaningless hash.
+        image_hash_hex = bundle.data["match"].get("image_sha256")
+        if not image_hash_hex:
+            raise ValueError(
+                "cannot anchor: bundle.data['match']['image_sha256'] is empty. "
+                "This should be impossible — build_evidence() requires non-empty "
+                "image_bytes — so something upstream bypassed that contract."
+            )
         image_hash = bytes.fromhex(image_hash_hex.removeprefix("0x").rjust(64, "0")[:64])
         post_hash = _keccak_of_canonical_post(bundle.data["post"])
         score_bps = int(bundle.data["match"]["score_bps"])

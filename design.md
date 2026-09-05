@@ -435,11 +435,21 @@ def sha256_hex(data: bytes) -> str
 
 CI test (R-13): `canonical_bytes(json.loads(canonical_bytes(x))) == canonical_bytes(x)`.
 
-### 4.2 Bundle schema v1
+### 4.2 Bundle schema v2
+
+Bumped from v1 5 Sep 2026, before any sample run was committed under G3 — see
+`memory.md` §3j/§3k (D-39, D-40). Three additions, bundled into one bump
+deliberately rather than three separate ones: `post.content_kind`,
+`match.image_phash`, `match.verified_against`. The bump also closed a real
+defect: `match.image_sha256` was previously always `""` because no provider
+ever populated `post_meta["image_sha256"]`, and `chain/evm.py` silently
+zero-filled the resulting on-chain `imageHash`. `build_evidence()` now takes
+the actual scored image bytes as a required argument (no fallback) and
+computes both hashes from them directly.
 
 ```jsonc
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "probe": {
     "face_commitment": "0x…",       // salted hash — NEVER the embedding (R-01)
     "liveness_passed": true,
@@ -450,7 +460,10 @@ CI test (R-13): `canonical_bytes(json.loads(canonical_bytes(x))) == canonical_by
   "match": {
     "page_url": "https://bsky.app/profile/…/post/…",
     "image_url": "https://cdn.bsky.app/…",
-    "image_sha256": "…",
+    "image_sha256": "…",             // sha256 of the ACTUAL bytes scored — required, never empty
+    "image_phash": "aabbccdd11223344", // 64-bit perceptual hash, 16 hex chars, same
+                                        // imagehash/Hamming convention as verify/dedupe.py
+    "verified_against": "search_engine_cache", // | "platform_origin"
     "provider": "bluesky",
     "score_bps": 6842,               // 0.6842 cosine
     "margin_bps": 3910,
@@ -458,6 +471,9 @@ CI test (R-13): `canonical_bytes(json.loads(canonical_bytes(x))) == canonical_by
   },
   "post": {
     "platform": "bluesky",
+    "content_kind": "post",          // "post" | "profile" | "unknown" — never null.
+                                      // See verify/allowlist.content_kind. Reporting only
+                                      // (R-03): never affects the accept decision.
     "author_handle": "…",
     "author_display": "…",
     "author_did": "…",
@@ -477,6 +493,12 @@ CI test (R-13): `canonical_bytes(json.loads(canonical_bytes(x))) == canonical_by
   }
 }
 ```
+
+A v1 bundle (without the three new fields) remains a valid, hashable
+structure forever — old evidence is never invalidated by a later schema
+version existing; only newly-built bundles use v2 (`tests/test_evidence_v2.py`
+pins both the v1 fixture's continued canonicalisation and the v2 fixture's
+round-trip).
 
 ### 4.3 Face commitment
 

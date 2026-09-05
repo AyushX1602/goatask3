@@ -37,7 +37,7 @@ requires_anvil = pytest.mark.skipif(
 
 def _make_bundle(tag: str) -> EvidenceBundle:
     data = {
-        "schema_version": 1,
+        "schema_version": 2,
         "probe": {
             "face_commitment": "0x" + "11" * 32,
             "liveness_passed": True,
@@ -47,8 +47,10 @@ def _make_bundle(tag: str) -> EvidenceBundle:
         },
         "match": {
             "page_url": "https://www.youtube.com/watch?v=nDj8MIyitUs",
-            "image_url": "https://i.ytimg.com/vi/nDj8MIyitUs/oardefault.jpg",
+            "image_url": "https://i.ytimg.com/vi/nDj8MIyitUs/maxresdefault.jpg",
             "image_sha256": "33" * 32,
+            "image_phash": "1122334455667788",
+            "verified_against": "search_engine_cache",
             "provider": "gcv_web_detection",
             "score_bps": 9618,
             "margin_bps": 8475,
@@ -56,6 +58,7 @@ def _make_bundle(tag: str) -> EvidenceBundle:
         },
         "post": {
             "platform": "youtube",
+            "content_kind": "post",
             "author_handle": "",
             "author_display": "bijay filmy",
             "text": f"reverify-test-{tag}",

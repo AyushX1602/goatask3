@@ -32,7 +32,34 @@ class MatchResult:
     all_scored: list[ScoredCandidate]
     threshold: float
     margin_required: float
-    verdict: str  # "MATCH" | "NO_MATCH"
+    # "MATCH" | "NO_MATCH" | "NO_CANDIDATES" | "MATCH_NON_SOCIAL"
+    #
+    # NO_CANDIDATES: every provider failed or returned literally zero
+    # candidates to examine — distinct from NO_MATCH, where candidates
+    # WERE examined and none matched. A run that says "no match found ...
+    # this is a correct, honest outcome" when nothing was ever searched is
+    # a different and less honest claim than the same sentence after 26
+    # candidates were actually checked.
+    #
+    # MATCH_NON_SOCIAL: a candidate scored high enough to pass threshold
+    # AND margin, but it sits on a domain outside the social allowlist
+    # (news coverage, a university faculty page, etc). Found live 5 Sep
+    # 2026: the UI's "No match found ... honest outcome" banner rendered
+    # simultaneously with "1 high-scoring non-social source also matched
+    # this face" in the caption underneath — two sentences on screen that
+    # directly contradict each other. This verdict exists so the headline
+    # and the caption can never disagree again: a strong non-social hit is
+    # reported as its own outcome, not folded silently into NO_MATCH.
+    verdict: str
+    # Candidates that GCV asserted are the SAME image (match_kind in
+    # {"full","partial"}, not just visually similar) but that live on a
+    # platform-blocked domain, so our own face check could never run on
+    # them. Reported alongside the verdict rather than as a sixth verdict
+    # state — a NO_MATCH or MATCH_NON_SOCIAL run with unverifiable hits is
+    # still that verdict, just with an honest caveat attached (see
+    # verify/pipeline_run.py's reject-platform-blocked reason and R-03:
+    # match_kind is a provider claim, never used to accept/reject).
+    unverifiable_platform_hits: tuple[ScoredCandidate, ...] = ()
 
 
 def _registrable_domain(url: str) -> str:
@@ -63,6 +90,18 @@ def score_candidates(
     for cand, decision, reason in prerejected or []:
         results.append(ScoredCandidate(cand, None, 0, decision, reason))
 
+    if not (prerejected or scored):
+        # Nothing was ever examined — every provider failed, was
+        # unavailable, or genuinely returned zero candidates. Distinct
+        # from NO_MATCH, where candidates WERE examined and none matched:
+        # "no match found ... this is a correct, honest outcome" is a
+        # different and less honest claim to make about a search that
+        # never actually happened.
+        return MatchResult(
+            best=None, runner_up=None, all_scored=[], threshold=policy.threshold,
+            margin_required=policy.margin, verdict="NO_CANDIDATES",
+        )
+
     for cand, score, faces_found in scored:
         if score is None:
             results.append(
@@ -80,6 +119,15 @@ def score_candidates(
 
         results.append(ScoredCandidate(cand, score, faces_found, "pending", ""))
 
+    # Collected regardless of outcome below, for the MATCH_NON_SOCIAL check
+    # and the unverifiable_platform_hits caveat — both apply on top of
+    # whatever verdict the scoreable candidates alone would produce.
+    domain_rejects = [r for r in results if r.decision == "reject-domain"]
+    platform_blocked_full_or_partial = tuple(
+        r for r in results
+        if r.decision == "reject-platform-blocked" and r.candidate.match_kind in ("full", "partial")
+    )
+
     scoreable = [r for r in results if r.score is not None and r.decision == "pending"]
     scoreable.sort(key=lambda r: r.score, reverse=True)
 
@@ -87,7 +135,20 @@ def score_candidates(
         for i, r in enumerate(results):
             if r.decision == "pending":
                 results[i] = ScoredCandidate(r.candidate, r.score, r.faces_found, "reject-below-threshold", "no scoreable candidates")
-        return MatchResult(None, None, results, policy.threshold, policy.margin, "NO_MATCH")
+
+        # A high-scoring domain-rejected hit means the search DID find this
+        # face convincingly, just not on a social platform — a materially
+        # different claim from "nothing matched", and the two must never
+        # both render as if they agree (found live 5 Sep 2026: the UI
+        # said "no match ... honest outcome" and "1 high-scoring non-social
+        # source also matched" in the same breath).
+        strong_non_social = [r for r in domain_rejects if r.score is not None and r.score >= policy.threshold]
+        verdict = "MATCH_NON_SOCIAL" if strong_non_social else "NO_MATCH"
+        return MatchResult(
+            best=None, runner_up=None, all_scored=results, threshold=policy.threshold,
+            margin_required=policy.margin, verdict=verdict,
+            unverifiable_platform_hits=platform_blocked_full_or_partial,
+        )
 
     best = scoreable[0]
 
@@ -170,4 +231,5 @@ def score_candidates(
         threshold=policy.threshold,
         margin_required=policy.margin,
         verdict=verdict,
+        unverifiable_platform_hits=platform_blocked_full_or_partial,
     )

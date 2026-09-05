@@ -25,7 +25,6 @@ audit log as context and nothing more.
 from __future__ import annotations
 
 import base64
-import re
 from typing import Any
 
 import numpy as np
@@ -33,6 +32,12 @@ import numpy as np
 from pipeline.cache.http_cache import HttpCache, get_http_cache
 from pipeline.config import get_config
 from pipeline.search.base import Candidate
+from pipeline.search.media_urls import (
+    derive_github_profile_url,
+    derive_image_url_and_fallbacks,
+    derive_page_url,
+    size_variants_for,
+)
 
 GCV_ENDPOINT = "https://vision.googleapis.com/v1/images:annotate"
 SERPAPI_ENDPOINT = "https://serpapi.com/search.json"
@@ -50,46 +55,38 @@ UNFETCHABLE_SCHEMES = ("x-raw-image:",)
 
 
 def _derive_page_url(image_url: str) -> str | None:
-    """Derives the real POST url from a platform CDN image url.
-
-    GCV's standalone image arrays (fullMatchingImages / visuallySimilar)
-    give only an image url, so `page_url` used to be set to that same CDN
-    url. That produced an "accepted match" pointing at
-    `i.ytimg.com/vi/<id>/oardefault.jpg` — a thumbnail, not a post. The
-    brief asks for a matching social media POST, so a bare CDN image is
-    not a citable result.
-
-    Only derivable where the CDN path embeds a stable content id. YouTube
-    does; Reddit's preview.redd.it and X's pbs.twimg.com do not encode the
-    parent post, so those correctly stay un-derivable.
-    """
-    m = re.search(r"i\.ytimg\.com/vi/([A-Za-z0-9_-]{11})/", image_url)
-    if m:
-        return f"https://www.youtube.com/watch?v={m.group(1)}"
-    return None
+    """Thin wrapper kept for the existing test surface; see
+    pipeline/search/media_urls.py for the actual platform knowledge."""
+    return derive_page_url(image_url)
 
 
 def _derive_image_url(page_url: str) -> str | None:
-    """Derives a real, fetchable thumbnail URL from a known platform's page
-    URL, for pages where GCV returned no matching-image URL of its own.
+    """Thin wrapper kept for the existing test surface; see
+    pipeline/search/media_urls.py for the actual platform knowledge.
+    Returns only the primary (largest) variant — callers that need the
+    fallback chain should use derive_image_url_and_fallbacks directly."""
+    image_url, _ = derive_image_url_and_fallbacks(page_url)
+    return image_url or None
 
-    Without this, such pages previously fell back to using the PAGE url as
-    the image url — so the pipeline downloaded HTML, failed to decode it,
-    and reported the deeply misleading `reject-no-face` ("no face detected
-    in candidate image") when in fact no image was ever retrieved. Found
-    live on a Hrithik Roshan probe where four youtube.com results were
-    discarded this way.
 
-    Only patterns that are stable and documented are derived here; anything
-    else returns None and is reported honestly as having no image.
+def _resolve_image_url(url: str) -> tuple[str, tuple[str, ...]]:
+    """Normalises a provider-supplied image URL to its largest known size
+    variant, with the remaining variants as fallbacks.
+
+    Applied at PARSE time (not fetch time) deliberately: the evidence
+    bundle records candidate.image_url verbatim (evidence/bundle.py), so
+    the URL we cite must be the exact URL we scored. Rewriting later would
+    let the anchored record cite a URL (e.g. ?name=thumb) different from
+    the one that actually passed the face-quality gate.
+
+    Measured: X's default `?name=thumb` variant is 150x150 (face ~32px,
+    below the 50px gate); `?name=orig` is 1080x1080 (face ~235px, passes).
+    scripts/probe_size_variants.py, 5 Sep 2026.
     """
-    m = re.search(r"(?:youtube\.com/watch\?v=|youtu\.be/)([A-Za-z0-9_-]{11})", page_url)
-    if m:
-        # maxresdefault is not present for every video, but i.ytimg.com
-        # falls back rather than 404ing in most cases; the fetch layer
-        # treats a failure as reject-fetch-failed either way.
-        return f"https://i.ytimg.com/vi/{m.group(1)}/maxresdefault.jpg"
-    return None
+    variants = size_variants_for(url)
+    if not variants:
+        return url, ()
+    return variants[0], variants[1:]
 
 
 def parse_gcv(payload: dict[str, Any]) -> tuple[list[Candidate], list[str]]:
@@ -121,9 +118,10 @@ def parse_gcv(payload: dict[str, Any]) -> tuple[list[Candidate], list[str]]:
         page_url = page.get("url")
         if not page_url:
             continue
-        images = (page.get("fullMatchingImages") or []) + (
-            page.get("partialMatchingImages") or []
-        )
+
+        full_images = page.get("fullMatchingImages") or []
+        partial_images = page.get("partialMatchingImages") or []
+        images = full_images + partial_images
         image_url = next(
             (
                 i["url"]
@@ -132,19 +130,40 @@ def parse_gcv(payload: dict[str, Any]) -> tuple[list[Candidate], list[str]]:
             ),
             None,
         )
+        match_kind = "full" if any(i.get("url") == image_url for i in full_images) else (
+            "partial" if image_url else ""
+        )
         # Never fall back to the page URL as an image URL — that downloads
         # HTML and misreports it as "no face detected". Derive a real
         # thumbnail where the platform allows it, otherwise leave it empty
         # and let the pipeline report `reject-no-image` honestly.
+        fallbacks: tuple[str, ...] = ()
         if not image_url:
-            image_url = _derive_image_url(page_url) or ""
+            image_url, fallbacks = derive_image_url_and_fallbacks(page_url)
+        else:
+            image_url, fallbacks = _resolve_image_url(image_url)
+
+        # GitHub: a repo/blob page carries the OWNER's avatar, not the
+        # owner's actual profile. The profile is the citable identity page
+        # under the R-06 allowlist principle (verify/allowlist.py); the
+        # repo README is not where a person "publishes under their
+        # identity" in the sense that principle means.
+        github_profile = derive_github_profile_url(page_url)
+        effective_page_url = github_profile or page_url
+
         candidates.append(
             Candidate(
                 image_url=image_url,
-                page_url=page_url,
+                page_url=effective_page_url,
                 source="gcv_web_detection",
                 provider_score=None,  # R-03
-                raw={"page_title": page.get("pageTitle"), "kind": "page"},
+                raw={
+                    "page_title": page.get("pageTitle"),
+                    "kind": "page",
+                    "found_on": page_url if github_profile else None,
+                },
+                image_url_fallbacks=fallbacks,
+                match_kind=match_kind,
             )
         )
 
@@ -152,20 +171,24 @@ def parse_gcv(payload: dict[str, Any]) -> tuple[list[Candidate], list[str]]:
     # have for these, which the allowlist will usually reject — that is
     # correct and gets logged rather than hidden.
     for kind in ("fullMatchingImages", "partialMatchingImages", "visuallySimilarImages"):
+        match_kind = {"fullMatchingImages": "full", "partialMatchingImages": "partial", "visuallySimilarImages": "similar"}[kind]
         for img in web.get(kind) or []:
             url = img.get("url")
             if not url or url.startswith(UNFETCHABLE_SCHEMES):
                 continue
             # Prefer a real post URL over the bare CDN image URL, so an
             # accepted match cites something a human can actually open.
-            derived_page = _derive_page_url(url)
+            derived_page = derive_page_url(url)
+            resolved_url, fallbacks = _resolve_image_url(url)
             candidates.append(
                 Candidate(
-                    image_url=url,
+                    image_url=resolved_url,
                     page_url=derived_page or url,
                     source="gcv_web_detection",
                     provider_score=None,  # R-03
                     raw={"kind": kind, "page_derived_from_cdn": bool(derived_page)},
+                    image_url_fallbacks=fallbacks,
+                    match_kind=match_kind,
                 )
             )
 
@@ -189,13 +212,22 @@ def parse_serpapi_lens(payload: dict[str, Any]) -> tuple[list[Candidate], list[s
         link = m.get("link")
         if not link:
             continue
+        # Prefer the full-size `image` over `thumbnail`: thumbnails are
+        # small enough to routinely fail the 50px face-quality gate (the
+        # exact failure mode measured on GCV thumbnails during G1), while
+        # `image` is Lens's full-resolution reference. Ordering was
+        # previously backwards (`thumbnail or image`). Recorded which
+        # field actually won so this is auditable, not just asserted.
+        image_field_used = "image" if m.get("image") else ("thumbnail" if m.get("thumbnail") else None)
+        image_url, fallbacks = _resolve_image_url(m.get("image") or m.get("thumbnail") or "")
         candidates.append(
             Candidate(
-                image_url=m.get("thumbnail") or m.get("image") or "",
+                image_url=image_url,
                 page_url=link,
                 source="serpapi_lens",
                 provider_score=None,  # R-03: Lens gives no score, and we would ignore it
-                raw={"title": m.get("title"), "kind": "visual_match"},
+                raw={"title": m.get("title"), "kind": "visual_match", "image_field_used": image_field_used},
+                image_url_fallbacks=fallbacks,
             )
         )
 
@@ -203,17 +235,19 @@ def parse_serpapi_lens(payload: dict[str, Any]) -> tuple[list[Candidate], list[s
         link = o.get("link")
         if not link:
             continue
+        imgs = o.get("images") or []
+        full = imgs[0] if imgs else None
         thumb = o.get("thumbnail")
-        if not thumb:
-            imgs = o.get("images") or []
-            thumb = imgs[0] if imgs else ""
+        image_field_used = "images[0]" if full else ("thumbnail" if thumb else None)
+        image_url, fallbacks = _resolve_image_url(full or thumb or "")
         candidates.append(
             Candidate(
-                image_url=thumb or "",
+                image_url=image_url,
                 page_url=link,
                 source="serpapi_lens",
                 provider_score=None,
-                raw={"title": o.get("title"), "kind": "organic"},
+                raw={"title": o.get("title"), "kind": "organic", "image_field_used": image_field_used},
+                image_url_fallbacks=fallbacks,
             )
         )
 
