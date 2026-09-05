@@ -8,6 +8,7 @@ individual provider implementation has to get it right on its own.
 
 from __future__ import annotations
 
+import inspect
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -19,10 +20,15 @@ def gather(
     probe_vec,
     providers: list[SearchProvider],
     timeout_s: float = 45.0,
+    public_image_url: str | None = None,
 ) -> tuple[list[Candidate], list[ProviderReport]]:
     """Runs every available provider concurrently. Returns all candidates
     pooled together, plus one ProviderReport per provider (including
     unavailable and failed ones) for the audit log.
+
+    public_image_url is passed only to providers whose search() accepts it
+    (inspected via signature, so providers unaware of the kwarg — e.g. the
+    Bluesky fallback — are called exactly as before).
     """
     reports: list[ProviderReport] = []
     to_run: list[SearchProvider] = []
@@ -43,7 +49,12 @@ def gather(
     def _run(provider: SearchProvider) -> tuple[SearchProvider, list[Candidate], float, str | None]:
         start = time.perf_counter()
         try:
-            cands = provider.search(aligned_face_png, probe_vec)
+            search_fn = provider.search
+            accepts_url = "public_image_url" in inspect.signature(search_fn).parameters
+            if accepts_url:
+                cands = search_fn(aligned_face_png, probe_vec, public_image_url=public_image_url)
+            else:
+                cands = search_fn(aligned_face_png, probe_vec)
             err = None
         except Exception as exc:  # R-14: provider errors never propagate
             cands = []

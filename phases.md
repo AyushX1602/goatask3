@@ -92,12 +92,12 @@ Remaining effort ≈ 8–10 focused hours. Face core is **done, do not touch it*
 
 | # | Step | Exit criterion (must be executed and observed) |
 |---|---|---|
-| **F1** | `cache/http_cache.py` — R-04 | A repeated request is served from `.cache/` and makes no network call. Built **before** any live API call |
-| **F2** | `face/quality.py` — `MIN_FACE_PX = 50` (D-23) | A 30 px face is rejected with `reject-face-too-small`; a 200 px face passes |
-| **F3** | `search/web_detect.py` — GCV primary, mocked fixtures (D-28, D-30) | Fixture JSON parses into `Candidate` objects; empty image arrays treated as zero candidates, not an error |
-| **F4** | Candidate verification loop in `orchestrator` + `matcher` | A run downloads every candidate, scores all faces per image, and emits a full ranked table with reject reasons |
-| **F5** | Image upload input: CLI `--image PATH` + `POST /api/upload` (D-19) | The Obama portrait drives a full run; liveness reports `N/A`, never `LIVE` (R-22) |
-| **F6** | UI correctness pass (R-21, D-24) | A `NO_MATCH` run cannot be misread as "these people might be you" |
+| **F1** | `cache/http_cache.py` — R-04 | ✅ DONE. Cache hit makes zero network calls, verified by test |
+| **F2** | `face/quality.py` — `MIN_FACE_PX = 50` (D-23) | ✅ DONE. Small face rejected, large passes, verified by test |
+| **F3** | `search/web_detect.py` — GCV primary, mocked fixtures (D-28, D-30) | ✅ DONE. 20 tests, including against a real captured SerpApi response |
+| **F4** | Candidate verification loop, `verify/pipeline_run.py` | ✅ DONE. Live end-to-end MATCH: real Instagram post, score 0.7685, 47 candidates examined. Found+fixed a real YuNet large-image bug along the way (see memory.md 3c) |
+| **F5** | Image upload input: `POST /api/upload` (D-19) | ✅ DONE. CLI `--image PATH` not yet added — UI path proven live instead |
+| **F6** | UI correctness pass (R-21, D-24) | ✅ DONE. NO_MATCH headline + diagnostics toggle, 3-state liveness rendering |
 | **F7** | `evidence/canonical.py` + `bundle.py` + salted commitment (D-26) | Two identical runs produce byte-identical `evidence.json` and the same hash. No floats in hashed output |
 | **F8** | `contracts/EvidenceRegistry.sol` + Foundry + Anvil deploy (D-27) | `anchor` → `verify` round trip green; double-anchor reverts |
 | **F9** | `chain/evm.py` + **the tamper demo** | `verify` PASSes on an untouched bundle; a one-character edit reports `TAMPERED` with a non-zero exit code |

@@ -44,13 +44,23 @@ def score_candidates(
     scored: list[tuple[Candidate, float | None, int]],
     policy: MatchPolicy,
     allowed_domains: set[str] | None = None,
+    prerejected: list[tuple[Candidate, str, str]] | None = None,
 ) -> MatchResult:
     """scored: (candidate, best_face_score_or_None, faces_found) tuples,
     already produced by re-running the face core on each downloaded image
     (verify/allowlist.py filters domain eligibility separately upstream,
     but domain is re-checked here so the decision function is self-contained).
+
+    prerejected: candidates already decided before scoring — e.g. a failed
+    download (`reject-fetch-failed`) or every face too small to trust
+    (`reject-face-too-small`, design.md 1.7). Included in the audit trail
+    with their decision already fixed; never touched by threshold/margin
+    logic, since their decision is never "pending".
     """
     results: list[ScoredCandidate] = []
+
+    for cand, decision, reason in prerejected or []:
+        results.append(ScoredCandidate(cand, None, 0, decision, reason))
 
     for cand, score, faces_found in scored:
         if score is None:

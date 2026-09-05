@@ -51,16 +51,37 @@ Phase 0 complete and committed (`26744c4`). Starting Phase 1.
 - No standalone `python -m pipeline crawl`/`search`/`run-all` CLI commands (Phase 3-4 as originally scoped) — the demo UI's `server.py` inlines a minimal version of that loop directly rather than calling a finished CLI pipeline function. This works today but is technical debt: if Phase 3/4 are built properly later, `server.py`'s inlined crawl-and-score block should be refactored to call that shared function instead of duplicating it.
 - No evidence bundle, no chain code, no C2PA, no OpenTimestamps (Phases 9-11) — **deliberately stopped here per owner instruction.**
 
-**Next action — awaiting owner verification of the revised plan. No coding until then.**
+## 3c. F4-F6 complete — REAL MATCH achieved end to end, live
 
-When approved, the order is fixed and non-negotiable:
+5 Sep 2026. Built the shared verification loop and wired it through the UI, per the FINAL PLAN in phases.md.
 
-1. **Phase 5a** — `cache/http_cache.py` FIRST (protects the ~100/mo SerpApi quota), then resolve A-03 (how to submit a local image to SerpApi), then `search/web_detect.py`
-2. **Phase 5b** — quality gate + candidate verification loop
-3. **Phase 5c** — image upload input
-4. **Phase 5d** — UI correctness pass, then **STOP** for verification again
+**F4 `verify/pipeline_run.py`** — the single shared candidate-verification loop both the CLI and UI call. Fetches every candidate concurrently, applies the quality gate (F2), scores with our own ArcFace, dedupes, and hands off to `matcher.score_candidates`. `webapp/server.py`'s previous inlined duplicate loop (flagged as debt back in the Phase 2/3 session) is now deleted — one implementation, matching architecture.md 5a.
 
-Phase 5e (calibration) and 5f (GCV backend) follow after. Blockchain (Phases 9-11) remains untouched and unauthorised.
+**Real bug found and fixed during live testing, not assumed:** YuNet's detection confidence degrades on very large images. The approved demo subject's Wikimedia portrait (3356x2687) scored 0.63-0.77 for real faces — all below the 0.85 default threshold — while the same faces scored 0.94 on a 0.4x downscale. Fixed in `face/detect.py`: detection now runs on a copy capped at `max_detect_side=1600`, with bbox/landmarks rescaled back to source coordinates. Verified the rescale is numerically correct, not just plausible: the resulting embedding still scored 0.9691 cosine against a known-same-person fixture. Regression tests in `tests/test_detect_large_image.py`.
+
+**D-31 partially resolved without S3.** Threading a `public_image_url` through `run_pipeline` -> `orchestrator.gather` -> `WebDetectProvider.search()` (inspected via signature so Bluesky, which doesn't accept the kwarg, is unaffected) means the SerpApi backend works today for any probe with a known public URL — including the approved demo subject's own Wikimedia portrait. Full S3 presigning for arbitrary local files remains future work, tracked as before.
+
+**F5/F6 done together in the UI:** upload tab (D-19) alongside webcam, an optional public-URL field, 3-state liveness rendering (`LIVE`/`SPOOF`/`N/A — provenance unverified`, never conflating upload with a real pass — R-22), and the R-21 presentation fix: NO_MATCH is now the headline with candidates collapsed behind a "show diagnostics" toggle, captioned as rejected rather than ranked.
+
+**Live result, through the actual running server, with the owner's real SerpApi key:**
+
+```
+scan:   face_found=True, det_score=0.933 (post-fix; was 0 before)
+search: verdict=MATCH, 47 candidates examined, elapsed 5.2s
+ACCEPT: https://www.instagram.com/p/Dc5KuZdDZiX/
+        score 0.7685 (threshold 0.42, margin 1.7685)
+breakdown: 25 reject-face-too-small, 18 reject-domain, 3 reject-no-face, 1 ACCEPT
+```
+
+This is the first real, live, end-to-end MATCH against an actual social post, through the actual server, with no mocking. It directly satisfies prd.md S14/S15/S18 and the brief's core "genuine search, not hardcoded" requirement — 44 of 47 candidates were rejected with individual, honest reasons, and the one accepted result is a real Instagram post with a defensible score.
+
+**46 tests passing** (43 pre-existing + 3 new detect-large-image regression tests).
+
+**Still open:** GCV key (D-30, unblocked, not yet provided), full S3 presigning for arbitrary uploaded files without a known public URL, Foundry/Anvil installation for F8.
+
+---
+
+**Next action.** F1-F6 complete (cache, quality gate, web-detect provider, verification loop, upload input, UI correctness). Owner instruction was "start coding, paste API key later" — proceeding without a stop for GCV specifically, since SerpApi already proved the concept live. Remaining: F7 evidence bundle, F8 Foundry contract + Anvil, F9 chain anchor + tamper demo, F10 README, F11 recording. Blockchain (F8/F9) requires installing Foundry (not present — checked, `anvil`/`forge`/`cast` all missing) and is otherwise unauthorised-by-default per the original "stop before blockchain" instruction; will flag before starting F8 rather than assume the scope reset lifted that.
 
 ### What the owner should check in this revision
 

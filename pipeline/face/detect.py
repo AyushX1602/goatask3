@@ -34,6 +34,7 @@ class FaceDetector:
         score_threshold: float = 0.85,
         nms_threshold: float = 0.3,
         top_k: int = 50,
+        max_detect_side: int = 1600,
     ) -> None:
         if not model_path.exists():
             raise FileNotFoundError(
@@ -48,21 +49,40 @@ class FaceDetector:
             top_k,
         )
         self._last_size: tuple[int, int] | None = None
+        # Found empirically: on a 3356x2687 portrait, YuNet's own confidence
+        # for a real face dropped to ~0.71-0.77 (below the 0.85 default),
+        # while the SAME face on a 0.4x downscale scored 0.94. Detection is
+        # run on a capped copy and results are scaled back to source
+        # coordinates, so downstream alignment/embedding still uses full
+        # source resolution — only detection confidence benefits.
+        self.max_detect_side = max_detect_side
 
     def detect(self, bgr: np.ndarray) -> list[DetectedFace]:
         h, w = bgr.shape[:2]
-        if self._last_size != (w, h):
-            self._detector.setInputSize((w, h))
-            self._last_size = (w, h)
+        longest = max(h, w)
+        scale = self.max_detect_side / longest if longest > self.max_detect_side else 1.0
 
-        _, faces = self._detector.detect(bgr)
+        if scale < 1.0:
+            detect_img = cv2.resize(
+                bgr, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA
+            )
+        else:
+            detect_img = bgr
+
+        dh, dw = detect_img.shape[:2]
+        if self._last_size != (dw, dh):
+            self._detector.setInputSize((dw, dh))
+            self._last_size = (dw, dh)
+
+        _, faces = self._detector.detect(detect_img)
         if faces is None:
             return []
 
+        inv_scale = 1.0 / scale
         results: list[DetectedFace] = []
         for row in faces:
-            x, y, fw, fh = row[0:4]
-            kps5 = row[4:14].reshape(5, 2).astype(np.float32)
+            x, y, fw, fh = row[0:4] * inv_scale
+            kps5 = (row[4:14].reshape(5, 2) * inv_scale).astype(np.float32)
             score = float(row[14])
             bbox = (float(x), float(y), float(x + fw), float(y + fh))
             results.append(DetectedFace(bbox=bbox, kps5=kps5, det_score=score))
