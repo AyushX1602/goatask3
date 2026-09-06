@@ -198,6 +198,7 @@ class HttpCache:
         *,
         params: dict[str, Any] | None = None,
         json_body: Any = None,
+        form_data: dict[str, str] | None = None,
         headers: dict[str, str] | None = None,
         timeout: float = DEFAULT_TIMEOUT,
         cache_errors: bool = False,
@@ -206,8 +207,19 @@ class HttpCache:
 
         cache_errors=False means non-2xx responses are NOT written to disk,
         so a transient 429/500 does not get baked in permanently.
+        form_data: if set, sent as application/x-www-form-urlencoded (imgbb).
         """
-        body = json.dumps(json_body, sort_keys=True).encode() if json_body is not None else None
+        body: bytes | None
+        if json_body is not None:
+            body = json.dumps(json_body, sort_keys=True).encode()
+        elif form_data is not None:
+            # stable key over sorted form fields — values may be large (base64)
+            body = json.dumps(
+                {k: hashlib.sha256(v.encode()).hexdigest() for k, v in sorted(form_data.items())},
+                sort_keys=True,
+            ).encode()
+        else:
+            body = None
         key = cache_key(method, url, params, body)
 
         if self.enabled:
@@ -221,7 +233,8 @@ class HttpCache:
             method.upper(),
             url,
             params=params,
-            json=json_body,
+            json=json_body if json_body is not None else None,
+            data=form_data if form_data is not None else None,
             headers=headers,
             timeout=timeout,
         )
