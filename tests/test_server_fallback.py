@@ -5,7 +5,7 @@ configured, but that does not mean a search will SUCCEED. In particular,
 the serpapi backend raises internally when no public_image_url is
 supplied (by design, R-14 catches it), which surfaced as the primary path
 silently returning zero candidates and NO_MATCH — with no indication that
-the "web search" never actually happened. architecture.md 9's documented
+the "web search" never actually happened. docs/architecture.md 9's documented
 fallback behaviour ("Both web-detection backends down -> Bluesky fallback,
 labelled degraded") was not implemented for this specific failure mode.
 
@@ -77,7 +77,7 @@ def test_primary_produced_nothing_triggers_bluesky_fallback(server_module, monke
 
 def test_audit_trail_shows_both_the_failed_primary_and_the_fallback(server_module, monkeypatch, tmp_path):
     """The fix must not silently swap providers — both attempts must be
-    visible (rules.md never-cut: full candidate/provider trail)."""
+    visible (docs/rules.md never-cut: full candidate/provider trail)."""
     from fastapi.testclient import TestClient
 
     monkeypatch.setattr(server_module, "RUNS_DIR", tmp_path)

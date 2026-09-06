@@ -1,4 +1,4 @@
-"""EVM chain client. See design.md 5.2, rules.md R-15.
+"""EVM chain client. See docs/design.md 5.2, docs/rules.md R-15.
 
 R-15: `EVM_CHAIN` switches the RPC endpoint and nothing else. Anvil
 (required, D-27) and Base Sepolia (optional bonus) run through this exact
@@ -6,7 +6,7 @@ same code — if they ever needed different logic, the abstraction would be
 wrong. That is the whole point of proving the demo on a local chain first:
 it is provably the same pipeline as whatever public chain comes later.
 
-architecture.md's boundary rule: this module receives ONLY hashes and CIDs.
+docs/architecture.md's boundary rule: this module receives ONLY hashes and CIDs.
 It must never see an image, an embedding, or a Candidate. That is what
 makes R-01 (no biometrics on chain) a structural property rather than a
 matter of discipline.
@@ -130,7 +130,7 @@ class EvmClient:
     def anchor(self, bundle: EvidenceBundle) -> AnchorReceipt:
         """Anchors an evidence bundle. Receives ONLY the hashes/CID from
         the bundle — never the bundle's raw data dict, and never a face
-        embedding (architecture.md 3 boundary rule)."""
+        embedding (docs/architecture.md 3 boundary rule)."""
         contract = self._contract()
 
         evidence_hash = bytes.fromhex(bundle.evidence_hash_hex.removeprefix("0x"))

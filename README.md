@@ -37,7 +37,7 @@ face scan / upload  ->  web/social search  ->  local re-verification (ArcFace)
 3. **Local re-verification.** Every candidate the search engine returns is
    independently re-scored by our own ArcFace pipeline — the search
    provider's own similarity score is recorded for the audit log and **never**
-   used to accept or reject a candidate (see `rules.md` R-03). This is the
+   used to accept or reject a candidate (see `docs/rules.md` R-03). This is the
    load-bearing property that separates this project from a search wrapper.
 
 4. **Canonical evidence bundle.** The accepted match, the probe's salted face
@@ -66,7 +66,7 @@ face scan / upload  ->  web/social search  ->  local re-verification (ArcFace)
 
 The brief explicitly permits "a local/simulated chain." Anvil provides a real
 EVM with real transactions, blocks, and contract execution at zero faucet, RPC,
-or network-deprecation risk (`memory.md` D-43). Base Sepolia is fully supported
+or network-deprecation risk (`docs/memory.md` D-43). Base Sepolia is fully supported
 as an opt-in bonus by setting `EVM_CHAIN=base-sepolia` (R-15: RPC switch only).
 
 ## How to run it
@@ -129,7 +129,7 @@ python -m pipeline verify <run_id>              # re-verify runs/<run_id> agains
 those code paths are currently reachable only through the demo UI's
 `/api/scan`, `/api/upload`, and `/api/search/{run_id}` endpoints, which call
 the exact same `pipeline.*` functions the CLI would (`webapp/server.py`
-contains no duplicate scoring logic — see `architecture.md` §5a).
+contains no duplicate scoring logic — see `docs/architecture.md` §5a).
 
 ### CLI Subcommands and Structured Exit Codes (T2.7)
 
@@ -249,7 +249,7 @@ accepted match:
   those platforms serve media only to their own crawler), `reject-domain`
   (news/CDN hosts, correctly excluded because they are not social platforms),
   `reject-below-threshold`, `reject-no-face`, and `reject-fetch-failed` — the
-  full honest taxonomy, every row with a real reason (`rules.md` R-24).
+  full honest taxonomy, every row with a real reason (`docs/rules.md` R-24).
 - `runs/2026-09-05T18-07-40Z/match_image.jpg` — the exact image bytes that
   were fetched and scored, saved locally so the run is self-contained.
 - Anchored and re-verified live (see above). `anchor.json` records the real
@@ -259,7 +259,7 @@ accepted match:
 
 A genuine, non-degraded, non-fabricated `NO_MATCH`: 21 real candidates
 examined via GCV, every score below 0.15, verdict correctly `NO_MATCH`
-(`rules.md` R-16 — a system that always finds something is indistinguishable
+(`docs/rules.md` R-16 — a system that always finds something is indistinguishable
 from a hardcoded one). No evidence bundle is built for a `NO_MATCH` — there
 is nothing to anchor.
 
@@ -289,7 +289,7 @@ not be confused.** `pbs.twimg.com/media/...` uses a `?name=` query parameter
 instead, and `?name=` 404s on that path entirely. A URL rewrite that
 assumed one scheme for both caused a real, measured regression — a working
 profile-image URL was rewritten into five 404s, turning a true `MATCH` into
-a false `NO_MATCH`. Fixed with a hard invariant (`rules.md` R-23): any URL
+a false `NO_MATCH`. Fixed with a hard invariant (`docs/rules.md` R-23): any URL
 rewrite must keep the provider's original URL in the resulting fallback
 chain, so the worst case of a wrong scheme guess is "no better than before,"
 never worse.
@@ -303,7 +303,7 @@ profiles entirely would mean the pipeline only works on public figures. Both
 are accepted and labelled honestly via `post.content_kind` (`"post"` |
 `"profile"` | `"unknown"`, never null) rather than either dropped or
 silently overclaimed. This never affects the accept/reject decision
-(`rules.md` R-03) — it is reporting only.
+(`docs/rules.md` R-03) — it is reporting only.
 
 ## Synthetic and stock avatars
 
@@ -332,9 +332,9 @@ sample.
   with a truncated sha256, all identity signals stripped) and kept only
   locally under `calibration/quarantine/` (gitignored) as sha256-only
   calibration data — never as a demo, a README example, or a recording
-  subject. See `rules.md`'s consent principle and `memory.md` §3m for the
+  subject. See `docs/rules.md`'s consent principle and `docs/memory.md` §3m for the
   full account of why this matters and how it was handled.
-- **One face per invocation. No bulk mode.** (`rules.md` R-05.) The
+- **One face per invocation. No bulk mode.** (`docs/rules.md` R-05.) The
   difference between a provenance tool and a surveillance tool is
   throughput; this is a design position, not an incidental limitation.
 
@@ -379,13 +379,13 @@ sample.
 
 ## Architecture, decisions, and full history
 
-- `architecture.md` — module boundaries and the request/response flow
-- `design.md` — the evidence bundle schema, quality gates, and score bands
-- `rules.md` — binding invariants (R-01 through R-24) and the reasoning
+- `docs/architecture.md` — module boundaries and the request/response flow
+- `docs/design.md` — the evidence bundle schema, quality gates, and score bands
+- `docs/rules.md` — binding invariants (R-01 through R-24) and the reasoning
   behind each one
-- `memory.md` — the full decision log and session-by-session history,
+- `docs/memory.md` — the full decision log and session-by-session history,
   including every regression found and how it was fixed
-- `phases.md` — the build plan and current completion status
+- `docs/phases.md` — the build plan and current completion status
 
 ## Tests
 

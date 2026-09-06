@@ -1,5 +1,5 @@
 """Resolver cascade for candidates whose own image URL is missing or
-unfetchable. See rules.md I-05/R-12, memory.md 6 Sep 2026 ("real crawling
+unfetchable. See docs/rules.md I-05/R-12, docs/memory.md 6 Sep 2026 ("real crawling
 instead of --").
 
 verify/pipeline_run.py's existing size-variant walk (media_urls.py)

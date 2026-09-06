@@ -1,4 +1,4 @@
-"""F3 exit criteria (phases.md FINAL PLAN).
+"""F3 exit criteria (docs/phases.md FINAL PLAN).
 
 Fixture JSON must parse into Candidate objects, and empty image arrays must
 be treated as a valid zero-candidate result rather than an error (A-08).
@@ -69,7 +69,7 @@ def test_gcv_finds_social_pages():
 
 def test_gcv_keeps_non_social_candidates_for_the_audit_log():
     """Off-allowlist candidates must still be returned so they can be scored
-    and logged as rejected, not silently dropped (design.md 2.5)."""
+    and logged as rejected, not silently dropped (docs/design.md 2.5)."""
     cands, _ = parse_gcv(load("gcv_web_detection_obama.json"))
     assert any(not is_allowed(c.page_url) for c in cands)
 
@@ -136,7 +136,7 @@ def test_serpapi_finds_social_domains_in_real_data():
     social = [c for c in cands if is_allowed(c.page_url)]
     assert len(social) >= 3, "real captured data contained multiple social hits"
     domains = {c.page_url.split("/")[2].replace("www.", "") for c in social}
-    # Reach across more than one platform is the point (prd.md S15)
+    # Reach across more than one platform is the point (docs/prd.md S15)
     assert len(domains) >= 2
 
 

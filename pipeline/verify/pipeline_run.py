@@ -1,4 +1,4 @@
-"""F4 — the candidate verification loop. See phases.md FINAL PLAN.
+"""F4 — the candidate verification loop. See docs/phases.md FINAL PLAN.
 
 This is the project's core technical claim: web-detection candidates are
 noisy image-similarity results, and OUR ArcFace re-verification is what
@@ -8,7 +8,7 @@ where) without touching the decision logic, because that logic lives here
 and nowhere else.
 
 Both the CLI and the local demo UI call this ONE function, so there is
-exactly one verification implementation in the codebase (architecture.md
+exactly one verification implementation in the codebase (docs/architecture.md
 5a: "not a second implementation to maintain").
 """
 
@@ -133,7 +133,7 @@ def _score_one_candidate(
     largest_face_px_or_None).
 
     A prereject_reason means this candidate must not enter matcher's
-    threshold/margin logic (design.md 1.7: too-small faces produce
+    threshold/margin logic (docs/design.md 1.7: too-small faces produce
     unreliable scores, not weak ones).
 
     largest_face_px is a REAL measured observation (6 Sep 2026, owner
@@ -319,7 +319,7 @@ def run_pipeline(
     search_image_bytes: the ORIGINAL photograph (JPEG), NOT the aligned
     crop — see pipeline/search/image_prep.py for why this distinction is
     load-bearing. Sent as base64 request content by the GCV backend
-    (design.md 2.1a).
+    (docs/design.md 2.1a).
 
     public_image_url: forwarded to providers whose search() accepts it (the
     serpapi backend, D-31 — it needs a publicly reachable URL and cannot

@@ -1,4 +1,4 @@
-"""Tests for CLI subcommands and structured exit codes (T2.7 / phases.md).
+"""Tests for CLI subcommands and structured exit codes (T2.7 / docs/phases.md).
 
 Exit Code Schema:
   0: OK / PASS

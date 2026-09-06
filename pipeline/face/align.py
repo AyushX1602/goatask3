@@ -1,5 +1,5 @@
 """Face alignment: geometric landmark ordering + similarity transform to the
-ArcFace 5-point template. See design.md 1.3-1.4.
+ArcFace 5-point template. See docs/design.md 1.3-1.4.
 
 R-08: never pass an unaligned crop to embed(). ArcFace was trained on this
 exact geometry; skipping alignment degrades accuracy with no error raised.
@@ -27,7 +27,7 @@ ARCFACE_TEMPLATE_112 = np.array(
 def canonical_kps(raw: np.ndarray) -> np.ndarray:
     """Reorders 5 raw landmarks geometrically by x-position, never by name.
 
-    design.md 1.3: naming conventions for "left"/"right" differ between
+    docs/design.md 1.3: naming conventions for "left"/"right" differ between
     libraries (subject's left vs viewer's left). Trusting names silently
     mirrors the alignment and quietly wrecks accuracy. Order geometrically
     instead: eyes are the two smallest-y points, mouth corners the two

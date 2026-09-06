@@ -1,9 +1,9 @@
-"""The re-verification command. See design.md 5.4, phases.md T2.1 / F9.
+"""The re-verification command. See docs/design.md 5.4, docs/phases.md T2.1 / F9.
 
 Literal brief requirement 3: "demonstrate re-verifying the data against
 the on-chain record."
 
-Three ordered, independent checks (design.md 5.4, revised 7 Sep 2026):
+Three ordered, independent checks (docs/design.md 5.4, revised 7 Sep 2026):
 
   1. ARTIFACT DIGESTS (R-25) — recompute sha256 / phash of every file the bundle
      references directly from the files on disk and compare against the digests

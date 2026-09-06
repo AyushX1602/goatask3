@@ -1,4 +1,4 @@
-"""Platform CDN URL knowledge. See rules.md R-21 discussion of lost recall.
+"""Platform CDN URL knowledge. See docs/rules.md R-21 discussion of lost recall.
 
 Moved out of web_detect.py deliberately: that module's job is parsing
 provider API responses, not knowing that X serves several pixel sizes of

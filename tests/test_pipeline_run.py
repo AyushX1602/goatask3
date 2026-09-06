@@ -1,4 +1,4 @@
-"""F4 exit criterion (phases.md FINAL PLAN):
+"""F4 exit criterion (docs/phases.md FINAL PLAN):
 
 'An end-to-end run on a public figure yields verdict: MATCH with a real
 social post URL, a score above threshold, and an audit.json listing every
@@ -154,7 +154,7 @@ def test_no_match_when_all_candidates_are_different_people(detector, embedder, m
 
 
 def test_off_allowlist_candidate_never_reported_even_if_it_would_match(detector, embedder, monkeypatch):
-    """design.md 2.5: a high-scoring candidate on a non-social domain must
+    """docs/design.md 2.5: a high-scoring candidate on a non-social domain must
     be logged as rejected, never surfaced as the ACCEPTed match. It IS
     surfaced as MATCH_NON_SOCIAL rather than plain NO_MATCH, since this
     candidate would have passed threshold+margin — the search DID find the
@@ -217,7 +217,7 @@ def test_media_blocked_platform_gets_its_own_honest_reason(detector, embedder, m
 
 
 def test_too_small_face_is_prerejected_not_scored(detector, embedder, monkeypatch):
-    """design.md 1.7 / F2: a too-small face must never enter threshold logic
+    """docs/design.md 1.7 / F2: a too-small face must never enter threshold logic
     as a weak score — it is excluded before scoring."""
     probe_vec, png = _probe(detector, embedder, FIX / "obama1.jpg")
 

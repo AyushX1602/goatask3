@@ -3,7 +3,7 @@ browser User-Agent, per the owner's instruction (6 Sep 2026): "use whats
 best ... real crawling instead of --". This does NOT impersonate a
 privileged crawler (no Googlebot/facebookexternalhit/Twitterbot UA, no
 login cookies, no residential proxy, no scraper package) — it only checks
-whether an ordinary browser UA, which is what "honest fetching" (rules.md
+whether an ordinary browser UA, which is what "honest fetching" (docs/rules.md
 I-05 in the last review pass) actually means, gets a different result than
 our current research-tool UA.
 
@@ -14,7 +14,7 @@ Run:
 For each URL and each route, prints: HTTP status, content-type, byte count,
 whether the bytes decode as an image, and (if so) the largest detected face
 size in pixels. Writes a summary table to stdout only — the decision this
-produces is recorded by hand into rules.md/allowlist.py, not by this script.
+produces is recorded by hand into docs/rules.md/allowlist.py, not by this script.
 """
 
 from __future__ import annotations

@@ -3,7 +3,7 @@
 One call reaches every platform Google has indexed. Verified live during
 research: a single query on one face photo returned real post URLs on
 instagram, facebook, youtube, x and reddit. That is why this replaced the
-per-platform API layer entirely (architecture.md 5, "Rejected").
+per-platform API layer entirely (docs/architecture.md 5, "Rejected").
 
 Two interchangeable backends behind one provider:
 
@@ -542,7 +542,7 @@ class WebDetectProvider:
         if len(self.backends) == 1 and self.backends[0] == "serpapi" and not public_image_url:
             raise ValueError(
                 "serpapi backend needs a publicly reachable image URL "
-                "(see memory.md D-31: short-expiry S3 presigned GET)"
+                "(see docs/memory.md D-31: short-expiry S3 presigned GET)"
             )
 
         all_candidates: list[Candidate] = []

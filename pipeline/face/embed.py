@@ -1,4 +1,4 @@
-"""ArcFace embedding via onnxruntime. See design.md 1.5.
+"""ArcFace embedding via onnxruntime. See docs/design.md 1.5.
 
 Preprocessing matches InsightFace's own ONNX wrapper exactly:
   - input (1,3,112,112) NCHW float32
@@ -69,7 +69,7 @@ class FaceEmbedder:
         )
 
     def embed_batch(self, aligned_crops: list[np.ndarray]) -> list[Embedding]:
-        """Batched path for the Bluesky crawl (design.md 1.5, A-04).
+        """Batched path for the Bluesky crawl (docs/design.md 1.5, A-04).
 
         Falls back to a per-image loop if the model's batch axis turns out
         to be fixed rather than dynamic — this is verified empirically

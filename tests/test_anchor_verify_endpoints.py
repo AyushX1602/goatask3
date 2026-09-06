@@ -1,7 +1,7 @@
 """Tests for the G4 anchor/verify/tamper endpoints (6 Sep 2026).
 
 These exercise the SAME pipeline.chain.* functions the CLI's `anchor`/
-`verify` commands use (architecture.md 5a) — no second implementation.
+`verify` commands use (docs/architecture.md 5a) — no second implementation.
 Requires a real Anvil chain at EVM_RPC_URL with the EvidenceRegistry
 contract deployed (same precondition as tests/test_chain_evm.py).
 """

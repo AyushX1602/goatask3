@@ -2,8 +2,8 @@
 
 Solidity contract + Foundry project. Anchors a tamper-evident commitment
 to a face-to-social-post match, and lets anyone re-verify a bundle against
-the on-chain record later. See `../rules.md` R-01, R-15, and
-`../phases.md` F8/F9 for the design rationale.
+the on-chain record later. See `../docs/rules.md` R-01, R-15, and
+`../docs/phases.md` F8/F9 for the design rationale.
 
 ## Setup (fresh clone)
 

@@ -1,4 +1,4 @@
-"""Shared types for the face core. See design.md 1.1.
+"""Shared types for the face core. See docs/design.md 1.1.
 
 R-07: Embedding.vec is ALWAYS L2-normalised. Never construct one by hand
 outside of embed.py.

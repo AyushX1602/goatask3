@@ -1,4 +1,4 @@
-"""Head-crop search query representation. See design.md 1.7, phases.md T2.5, rules.md R-27.
+"""Head-crop search query representation. See docs/design.md 1.7, docs/phases.md T2.5, docs/rules.md R-27.
 
 Creates an asymmetrically-grown, square-padded, soft-masked head crop composited
 on neutral mid-grey (RGB/BGR 128, 128, 128).

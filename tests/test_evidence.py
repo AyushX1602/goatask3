@@ -1,4 +1,4 @@
-"""F7 exit criterion (phases.md FINAL PLAN):
+"""F7 exit criterion (docs/phases.md FINAL PLAN):
 
 'Two identical runs produce byte-identical evidence.json and the same
 hash. No floats in hashed output.'
@@ -55,7 +55,7 @@ def test_bool_is_not_mistaken_for_float():
 
 
 def test_round_trip_is_byte_identical():
-    """design.md 4.1 CI test, verbatim."""
+    """docs/design.md 4.1 CI test, verbatim."""
     obj = {"z": [3, 1, 2], "a": {"nested": True, "n": 7}}
     once = canonical_bytes(obj)
     twice = round_trip_bytes(once)

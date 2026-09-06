@@ -1,4 +1,4 @@
-"""Local demo UI backend. See architecture.md 5a, prd.md G8/S13.
+"""Local demo UI backend. See docs/architecture.md 5a, docs/prd.md G8/S13.
 
 Amended into scope 5 Sep 2026 at the owner's explicit request: a thin
 visualization layer for judges, built on top of the SAME pipeline.* code
@@ -200,13 +200,13 @@ async def upload(frame: UploadFile = File(...), public_image_url: str | None = F
 def search(run_id: str) -> SearchResponse:
     """Runs the ONE shared verification loop (pipeline.verify.pipeline_run,
     F4) for the probe stored by /api/scan or /api/upload. This endpoint
-    contains no scoring logic of its own — architecture.md 5a: 'not a
+    contains no scoring logic of its own — docs/architecture.md 5a: 'not a
     second implementation to maintain.'
 
     web_detect (D-28: GCV primary / SerpApi secondary) is the primary
     provider; bluesky is a keyless fallback, run only if web_detect is
     unavailable or returns nothing, and any resulting match is labelled a
-    degraded closed-corpus run (architecture.md 9, D-21).
+    degraded closed-corpus run (docs/architecture.md 9, D-21).
     """
     global _bluesky_crawled
 
@@ -251,7 +251,7 @@ def search(run_id: str) -> SearchResponse:
     # available()==True only means a key exists, not that a search will
     # SUCCEED — e.g. the serpapi backend without public_image_url raises
     # internally, R-14 catches it, and it surfaces as zero candidates
-    # returned. architecture.md 9 requires an actual fallback in that
+    # returned. docs/architecture.md 9 requires an actual fallback in that
     # case, not a silent NO_MATCH that hides "the primary path never ran."
     primary_produced_nothing = primary_result is None or not any(
         r.candidates_returned > 0 for r in primary_result.provider_reports
@@ -267,7 +267,7 @@ def search(run_id: str) -> SearchResponse:
 
         # Merge so the audit trail shows BOTH the failed/empty primary
         # attempt (if one was made) and the fallback attempt — never
-        # silently swap one report set for the other (rules.md never-cut:
+        # silently swap one report set for the other (docs/rules.md never-cut:
         # full candidate/provider trail).
         combined_reports = (
             primary_result.provider_reports if primary_result else []
@@ -364,7 +364,7 @@ def search(run_id: str) -> SearchResponse:
 # --------------------------------------------------------------------------
 # G4 (6 Sep 2026): anchor/verify/tamper endpoints. Same pipeline.chain.*
 # functions the CLI uses (pipeline/cli.py's anchor/verify commands) — no
-# second implementation, per architecture.md 5a. Exists so the anchor ->
+# second implementation, per docs/architecture.md 5a. Exists so the anchor ->
 # verify -> tamper -> restore cycle can be demonstrated by clicking buttons
 # in the recording instead of switching to a terminal and hand-editing
 # JSON, which is both slower and easier to fumble on a single take.

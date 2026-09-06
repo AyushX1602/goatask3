@@ -1,6 +1,6 @@
-"""Liveness / anti-spoof check. See design.md 1.6.
+"""Liveness / anti-spoof check. See docs/design.md 1.6.
 
-Applies to webcam input only (S2 in prd.md: a printed photo held to the
+Applies to webcam input only (S2 in docs/prd.md: a printed photo held to the
 camera must be rejected). Candidate images downloaded from the web are
 already photographs of photographs by definition, so liveness is skipped
 there — this asymmetry is documented in the README, not hidden.

@@ -1,4 +1,4 @@
-"""Parallel fan-out across search providers. See design.md 2.1.
+"""Parallel fan-out across search providers. See docs/design.md 2.1.
 
 R-14: a provider that raises, times out, or returns nothing is logged and
 contributes zero candidates. This module can never let a single provider

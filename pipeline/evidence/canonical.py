@@ -1,4 +1,4 @@
-"""Canonical JSON serialisation. See design.md 4.1, R-02.
+"""Canonical JSON serialisation. See docs/design.md 4.1, R-02.
 
 This is where hash-anchoring demos die: if serialisation drifts between
 producing a bundle and re-verifying it later, the hash changes and
@@ -84,7 +84,7 @@ def evidence_hash_hex(obj: dict) -> str:
 
 def round_trip_bytes(data: bytes) -> bytes:
     """canonical_bytes(json.loads(data)) — used by the CI round-trip test
-    (design.md 4.1): canonicalising, parsing, and re-canonicalising must be
+    (docs/design.md 4.1): canonicalising, parsing, and re-canonicalising must be
     byte-identical, or something in the pipeline is producing values that
     are not stable under serialisation."""
     return canonical_bytes(json.loads(data))

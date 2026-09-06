@@ -1,4 +1,4 @@
-"""Artifact re-verification and disk integrity checking. See design.md 5.4, 5.6.
+"""Artifact re-verification and disk integrity checking. See docs/design.md 5.4, 5.6.
 
 Rule R-25: Re-verification recomputes every digest from the source artifact.
 A stored digest is never reused as its own proof.

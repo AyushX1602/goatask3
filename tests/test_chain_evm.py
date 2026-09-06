@@ -1,4 +1,4 @@
-"""F8/F9 exit criteria (phases.md FINAL PLAN):
+"""F8/F9 exit criteria (docs/phases.md FINAL PLAN):
 
 'anchor -> verify round trip green; double-anchor reverts'
 'verify PASSes on an untouched bundle; a one-character edit reports
@@ -7,7 +7,7 @@ TAMPERED with a non-zero exit code'
 These run against a REAL Anvil chain — not mocked — because the whole
 point of this layer is proving the on-chain re-verification actually
 works. Requires `anvil` running on 127.0.0.1:8545 and the contract
-deployed (see contracts/README or phases.md F8).
+deployed (see contracts/README or docs/phases.md F8).
 
 Skipped automatically if Anvil is not reachable, so the rest of the suite
 is unaffected by whether a chain happens to be running.

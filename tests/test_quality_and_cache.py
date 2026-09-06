@@ -1,4 +1,4 @@
-"""F1 + F2 exit criteria (phases.md FINAL PLAN).
+"""F1 + F2 exit criteria (docs/phases.md FINAL PLAN).
 
 F1: a repeated request is served from cache and makes no network call.
 F2: a 30px face is rejected, a 200px face passes.

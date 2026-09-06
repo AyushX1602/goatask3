@@ -1,7 +1,7 @@
 """Single source of truth for configuration.
 
 Loaded from .env with defaults that work with NO .env present — that is what
-makes the zero-API-key quickstart possible (prd.md S10, architecture.md 8).
+makes the zero-API-key quickstart possible (docs/prd.md S10, docs/architecture.md 8).
 
 Rules enforced here:
 - R-09: MATCH_THRESHOLD / MATCH_MARGIN are read from calibration/threshold.json,
@@ -71,7 +71,7 @@ def load_match_policy() -> MatchPolicy:
             calibrated_at=data.get("calibrated_at"),
             is_placeholder=False,
         )
-    # Provisional only. design.md 3.2 / rules.md R-09 require this be
+    # Provisional only. docs/design.md 3.2 / docs/rules.md R-09 require this be
     # replaced by a derived value before Phase 7 exits.
     return MatchPolicy(
         threshold=0.42,
@@ -83,7 +83,7 @@ def load_match_policy() -> MatchPolicy:
 
 
 def _load_or_create_salt() -> bytes:
-    """Face commitment salt (design.md 4.3). Read from env if provided,
+    """Face commitment salt (docs/design.md 4.3). Read from env if provided,
     otherwise persisted once under .cache/ so commitments are reproducible
     across runs. Never committed to git (R-01, R-10)."""
     hex_val = _env("FACE_COMMITMENT_SALT_HEX")
@@ -118,7 +118,7 @@ class Config:
     min_face_px: int = field(default_factory=lambda: _env_int("MIN_FACE_PX", 50))
 
     # Bluesky — keyless fallback provider only (D-21). Seed-handle scoped
-    # crawling was proposed and then cancelled (memory.md, old Phase 3b):
+    # crawling was proposed and then cancelled (docs/memory.md, old Phase 3b):
     # web detection reaches real posts without us choosing where to look,
     # which made scoped crawling both unnecessary and a step toward
     # pre-selecting results, which the brief forbids.
@@ -131,7 +131,7 @@ class Config:
     # Storage
     pinata_jwt: str | None = field(default_factory=lambda: _env("PINATA_JWT"))
 
-    # Chain (architecture.md 8, R-15: same code path regardless of which chain)
+    # Chain (docs/architecture.md 8, R-15: same code path regardless of which chain)
     evm_chain: str = field(default_factory=lambda: _env("EVM_CHAIN", "anvil"))
     evm_rpc_url: str | None = field(default_factory=lambda: _env("EVM_RPC_URL"))
     evm_private_key: str | None = field(default_factory=lambda: _env("EVM_PRIVATE_KEY"))

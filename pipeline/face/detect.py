@@ -1,11 +1,11 @@
-"""Face detection via OpenCV YuNet. See design.md 1.2.
+"""Face detection via OpenCV YuNet. See docs/design.md 1.2.
 
 YuNet returns one row per face with 15 values:
     x y w h  x_re y_re  x_le y_le  x_nt y_nt  x_rcm y_rcm  x_lcm y_lcm  score
 (re/le = eyes, nt = nose tip, rcm/lcm = mouth corners)
 
 Chosen over SCRFD specifically because OpenCV performs anchor decoding and
-NMS internally (architecture.md 5, D-03 in memory.md) — no extra decode code.
+NMS internally (docs/architecture.md 5, D-03 in docs/memory.md) — no extra decode code.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ class FaceDetector:
     """Thin wrapper around cv2.FaceDetectorYN.
 
     Must call setInputSize whenever the frame size changes, or detection
-    silently returns zero faces (memory.md "Gotchas" #2).
+    silently returns zero faces (docs/memory.md "Gotchas" #2).
     """
 
     def __init__(
@@ -87,7 +87,7 @@ class FaceDetector:
             bbox = (float(x), float(y), float(x + fw), float(y + fh))
             results.append(DetectedFace(bbox=bbox, kps5=kps5, det_score=score))
 
-        # Largest face first (design.md 1.2) — the probe uses the largest
+        # Largest face first (docs/design.md 1.2) — the probe uses the largest
         # face; candidate images check all faces.
         results.sort(
             key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]),

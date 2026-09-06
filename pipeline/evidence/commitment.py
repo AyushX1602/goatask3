@@ -1,4 +1,4 @@
-"""Salted face commitment. See design.md 4.3, R-01.
+"""Salted face commitment. See docs/design.md 4.3, R-01.
 
 R-01 is the most important privacy rule in this project: no face embedding,
 and no reversible derivative of one, may ever be written to a blockchain,
@@ -18,7 +18,7 @@ same face re-embedded twice will not produce bit-identical float32 values
 the raw vector would make the SAME face produce a DIFFERENT commitment on
 every run — useless for anchoring. Quantising to a coarser integer grid
 absorbs that noise while remaining specific enough to distinguish different
-people (see the measured separation in architecture.md 2a: 0.765 same-person
+people (see the measured separation in docs/architecture.md 2a: 0.765 same-person
 vs a 0.074 non-match ceiling — comfortably wider than quantisation noise).
 """
 
@@ -43,7 +43,7 @@ def face_commitment(embedding: Embedding, salt: bytes) -> bytes:
     """keccak256(salt || quantised_embedding_bytes). Never hand the raw
     embedding to anything outside this function and canonical.py's caller
     boundary — chain/ and evidence/bundle.py must only ever see the output
-    of this function, never an Embedding (architecture.md 3 boundary table)."""
+    of this function, never an Embedding (docs/architecture.md 3 boundary table)."""
     if len(salt) < 16:
         raise ValueError("salt must be at least 16 bytes — see config.get_commitment_salt()")
     q = quantise(embedding.vec)

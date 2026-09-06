@@ -1,4 +1,4 @@
-"""Face quality gate. See design.md 1.7 and architecture.md 2a.
+"""Face quality gate. See docs/design.md 1.7 and docs/architecture.md 2a.
 
 Every number here was derived by measurement (scripts/probe_accuracy.py),
 not chosen by taste. Recorded so the gate is defensible if questioned.

@@ -1,8 +1,8 @@
 """Downloads the three ONNX models the pipeline needs, verifies each by
-sha256, and writes them to models/ (gitignored — rules.md "Models" section).
+sha256, and writes them to models/ (gitignored — docs/rules.md "Models" section).
 
 Idempotent: re-running skips any file that already matches its expected hash.
-Run this before recording (phases.md Phase 13) so nothing downloads on camera.
+Run this before recording (docs/phases.md Phase 13) so nothing downloads on camera.
 
 Usage:
     python scripts/fetch_models.py

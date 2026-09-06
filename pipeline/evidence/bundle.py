@@ -1,13 +1,13 @@
-"""Evidence bundle assembly. See design.md 4.2.
+"""Evidence bundle assembly. See docs/design.md 4.2.
 
 Produces the exact structure that gets canonicalised and hashed. This is
 the ONLY place a bundle is constructed — a future chain/ module must never
 build its own dict, or drift between "what we anchored" and "what we
 verify against" becomes possible (the classic hash-anchoring demo failure,
-design.md 4.1).
+docs/design.md 4.1).
 
 schema_version is frozen once this lands in a committed sample run
-(rules.md R-02). Any structural change after that requires a version bump,
+(docs/rules.md R-02). Any structural change after that requires a version bump,
 not an in-place edit.
 
 **v2 (5 Sep 2026)** — three additions, bumped together deliberately BEFORE
@@ -139,7 +139,7 @@ def build_evidence(
     """Builds and hashes an evidence bundle for an ACCEPTed match.
 
     Raises ValueError if match.verdict != "MATCH" — there is nothing to
-    anchor for a NO_MATCH run (rules.md R-16: NO_MATCH is a valid outcome,
+    anchor for a NO_MATCH run (docs/rules.md R-16: NO_MATCH is a valid outcome,
     but it produces no evidence bundle, only an audit log entry).
 
     image_bytes: the ACTUAL bytes that were fetched and scored for the

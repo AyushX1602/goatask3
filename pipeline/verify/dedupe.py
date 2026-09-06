@@ -1,4 +1,4 @@
-"""Candidate dedupe by perceptual hash. See design.md 2.4.
+"""Candidate dedupe by perceptual hash. See docs/design.md 2.4.
 
 The same image is often served from many CDNs at many sizes. Deduplicate
 before spending face-detection inference on it.

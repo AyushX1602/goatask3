@@ -1,4 +1,4 @@
-"""CLI entrypoint (T2.7 / architecture.md 5a / phases.md).
+"""CLI entrypoint (T2.7 / docs/architecture.md 5a / docs/phases.md).
 
 Structured Exit Codes:
   0: OK / PASS
@@ -506,7 +506,7 @@ def verify(
 
 @app.command()
 def serve(host: str = "127.0.0.1", port: int = 8000) -> None:
-    """Launch the local demo UI (architecture.md 5a, prd.md G8/S13)."""
+    """Launch the local demo UI (docs/architecture.md 5a, docs/prd.md G8/S13)."""
     import uvicorn
 
     console.print(f"[bold green]face-chain-verify demo UI[/] -> http://{host}:{port}")

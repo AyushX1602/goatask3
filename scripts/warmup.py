@@ -121,7 +121,7 @@ def check_http_cache_freshness_mode() -> str:
             "HTTP_CACHE=1 — a recorded run would replay from cache, which a "
             "judge can spot in audit.json's cache_hit stats and read as "
             "'canned'. Set HTTP_CACHE=0 for the actual recording take "
-            "(rules.md I-10 / R-04)."
+            "(docs/rules.md I-10 / R-04)."
         )
     return "HTTP_CACHE=0 — this take will be live, not replayed"
 

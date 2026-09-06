@@ -1,14 +1,14 @@
-"""Bluesky live search provider. See design.md 2.2.
+"""Bluesky live search provider. See docs/design.md 2.2.
 
 Zero API keys, zero signup — this is the provider that makes the
-zero-key quickstart (prd.md S10) possible.
+zero-key quickstart (docs/prd.md S10) possible.
 
-Verified live against the real API on 5 Sep 2026 (memory.md A-01/A-02):
+Verified live against the real API on 5 Sep 2026 (docs/memory.md A-01/A-02):
   - public.api.bsky.app read endpoints work with no authentication.
   - app.bsky.feed.searchPosts returns 403 unauthenticated — NOT used here.
   - app.bsky.feed.getAuthorFeed / getFeed already return ready-made
     thumb/fullsize CDN URLs on image embeds, so no URL construction is
-    needed (better than the A-02 assumption in design.md).
+    needed (better than the A-02 assumption in docs/design.md).
 """
 
 from __future__ import annotations
@@ -49,8 +49,8 @@ class PostRef:
 
 
 class FaceIndex:
-    """In-memory brute-force cosine index. See design.md 2.2 — unnecessary
-    to use FAISS below ~10^5 vectors (architecture.md 5, D-05)."""
+    """In-memory brute-force cosine index. See docs/design.md 2.2 — unnecessary
+    to use FAISS below ~10^5 vectors (docs/architecture.md 5, D-05)."""
 
     def __init__(self) -> None:
         self._vecs: list[np.ndarray] = []

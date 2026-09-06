@@ -1,7 +1,7 @@
 """One-off research probe: does SerpApi Google Lens return anything usable
 for a FACE query?
 
-This exists to resolve memory.md A-07 empirically instead of guessing —
+This exists to resolve docs/memory.md A-07 empirically instead of guessing —
 specifically:
   1. Does Lens identify a person from a face photo at all?
   2. Do any returned links land on SOCIAL MEDIA domains (what the brief

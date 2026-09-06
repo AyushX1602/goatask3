@@ -1,4 +1,4 @@
-"""Provider contract. See design.md 2.1 and architecture.md 4.
+"""Provider contract. See docs/design.md 2.1 and docs/architecture.md 4.
 
 R-03: Candidate.provider_score is recorded in the audit log and NEVER used
 to decide accept/reject. Only pipeline.verify.matcher does that, using our
@@ -77,11 +77,11 @@ class SearchProvider(Protocol):
     def available(self) -> bool:
         """True if this provider has what it needs (an API key, etc.) to
         run. The orchestrator skips unavailable providers silently — this
-        is what makes the zero-API-key quickstart work (prd.md S10)."""
+        is what makes the zero-API-key quickstart work (docs/prd.md S10)."""
         ...
 
     def search(self, search_image_bytes: bytes, probe_vec) -> list[Candidate]:
         """probe_vec: the (512,) L2-normalised probe embedding, passed as a
         plain array so this module has no dependency on pipeline.face
-        (architecture.md 3 boundary table)."""
+        (docs/architecture.md 3 boundary table)."""
         ...

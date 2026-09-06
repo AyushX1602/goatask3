@@ -1,5 +1,5 @@
 """Social-platform classification: allowlist, platform naming, content kind.
-See design.md 2.5, R-06.
+See docs/design.md 2.5, R-06.
 
 A match only counts if it sits on a public social platform, since the brief
 asks specifically for a "social media post". Registrable-domain comparison,
@@ -18,7 +18,7 @@ CDN hosts, not the platform's www domain:
 Excluding CDNs discarded most of the usable evidence. A Hrithik Roshan run
 threw away a 0.9771 `preview.redd.it` hit the same way.
 
-**Allowlist principle (rules.md R-06):** a platform belongs here iff it is
+**Allowlist principle (docs/rules.md R-06):** a platform belongs here iff it is
 one where an individual maintains a public identity profile and publishes
 content under it. `github.com` was added under this test (5 Sep 2026) after
 a live, genuine-search run scored a candidate's GitHub avatar at 0.9363 and

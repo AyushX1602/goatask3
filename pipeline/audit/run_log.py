@@ -1,7 +1,7 @@
-"""Run audit log. See design.md 6.
+"""Run audit log. See docs/design.md 6.
 
 Write-only, first-class deliverable — this is the artifact that answers
-"prove it isn't hardcoded" (rules.md never-cut list).
+"prove it isn't hardcoded" (docs/rules.md never-cut list).
 """
 
 from __future__ import annotations

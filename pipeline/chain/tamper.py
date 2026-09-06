@@ -1,4 +1,4 @@
-"""Tamper demonstration engine. See design.md 5.5, phases.md T2.2 / D-40.
+"""Tamper demonstration engine. See docs/design.md 5.5, docs/phases.md T2.2 / D-40.
 
 Three distinct tamper modes, each proving a different security property:
   1. swap-artifact: flips one byte in match_image.jpg.

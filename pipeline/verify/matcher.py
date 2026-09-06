@@ -1,4 +1,4 @@
-"""Accept/reject decision. See design.md 3.1.
+"""Accept/reject decision. See docs/design.md 3.1.
 
 R-03: this is the ONLY place the accept/reject decision is made. Provider
 scores are never consulted here.
@@ -85,7 +85,7 @@ def score_candidates(
 
     prerejected: candidates already decided before scoring — e.g. a failed
     download (`reject-fetch-failed`) or every face too small to trust
-    (`reject-face-too-small`, design.md 1.7). Included in the audit trail
+    (`reject-face-too-small`, docs/design.md 1.7). Included in the audit trail
     with their decision already fixed; never touched by threshold/margin
     logic, since their decision is never "pending".
     """

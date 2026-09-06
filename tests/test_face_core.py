@@ -1,14 +1,14 @@
-"""Phase 1 exit criteria (phases.md). All four must be observed:
+"""Phase 1 exit criteria (docs/phases.md). All four must be observed:
 
 1. Two different photos of the same person score > 0.5
 2. Two different people score < 0.3
 3. A horizontally flipped input scores > 0.9 against its unflipped self
-   (proves landmark ordering, design.md 1.3)
+   (proves landmark ordering, docs/design.md 1.3)
 4. Every embedding satisfies ||v|| ~= 1.0
 
 Fixtures under tests/fixtures/ are sourced from deepinsight/insightface and
 ageitgey/face_recognition sample data (both permissively licensed for this
-kind of use) — see memory.md for provenance.
+kind of use) — see docs/memory.md for provenance.
 """
 
 from __future__ import annotations
@@ -79,7 +79,7 @@ def test_flip_invariance(detector, embedder):
     """Exit criterion 3: a horizontally flipped input scores > 0.9 against
     its unflipped self.
 
-    design.md 1.3: this is the guard against the landmark-ordering bug.
+    docs/design.md 1.3: this is the guard against the landmark-ordering bug.
     canonical_kps must reorder geometrically (by x-position), not trust
     library-provided left/right names, or a flipped image silently produces
     a mirrored (wrong) alignment with degraded accuracy and no error.
@@ -106,7 +106,7 @@ def test_flip_invariance(detector, embedder):
 
 def test_canonical_kps_orders_by_x_not_by_name():
     """Unit-level guard: canonical_kps must sort eyes/mouth corners by
-    x-position regardless of input order (design.md 1.3)."""
+    x-position regardless of input order (docs/design.md 1.3)."""
     # Deliberately feed points with eyes swapped (right eye first).
     raw = np.array(
         [
@@ -125,7 +125,7 @@ def test_canonical_kps_orders_by_x_not_by_name():
 
 def test_multi_face_image_detects_several(detector):
     """t1.jpg is a group photo from the insightface sample set — should
-    yield multiple faces sorted largest-first (design.md 1.2)."""
+    yield multiple faces sorted largest-first (docs/design.md 1.2)."""
     img = cv2.imread(str(FIXTURES / "t1.jpg"))
     faces = detector.detect(img)
     assert len(faces) >= 2
@@ -135,7 +135,7 @@ def test_multi_face_image_detects_several(detector):
 
 
 def test_empty_detection_is_valid_not_an_error(detector):
-    """design.md 1.2: an image with no face is a valid empty result."""
+    """docs/design.md 1.2: an image with no face is a valid empty result."""
     blank = np.zeros((200, 200, 3), dtype=np.uint8)
     faces = detector.detect(blank)
     assert faces == []
