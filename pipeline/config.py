@@ -124,6 +124,9 @@ class Config:
     # pre-selecting results, which the brief forbids.
     bluesky_crawl_limit: int = field(default_factory=lambda: _env_int("BLUESKY_CRAWL_LIMIT", 300))
     expand_serp_max_calls: int = field(default_factory=lambda: _env_int("EXPAND_SERP_MAX_CALLS", 1))
+    web_detect_escalate: int = field(default_factory=lambda: _env_int("WEB_DETECT_ESCALATE", 1))
+    search_public_upload: int = field(default_factory=lambda: _env_int("SEARCH_PUBLIC_UPLOAD", 0))
+    imgbb_key: str | None = field(default_factory=lambda: _env("IMGBB_KEY"))
 
     # Storage
     pinata_jwt: str | None = field(default_factory=lambda: _env("PINATA_JWT"))
@@ -145,6 +148,7 @@ class Config:
             "Config("
             f"serpapi_key={has(self.serpapi_key)}, "
             f"gcv_api_key={has(self.gcv_api_key)}, "
+            f"imgbb_key={has(self.imgbb_key)}, "
             f"web_detect_backend={self.web_detect_backend}, "
             f"min_face_px={self.min_face_px}, "
             f"pinata_jwt={has(self.pinata_jwt)}, "

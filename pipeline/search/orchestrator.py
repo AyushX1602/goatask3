@@ -79,7 +79,7 @@ def gather(
                     attempted=True,
                     latency_ms=elapsed_ms,
                     candidates_returned=len(cands),
-                    error=err,
+                    error=err or getattr(provider, "last_skip_reason", None),
                 )
             )
 

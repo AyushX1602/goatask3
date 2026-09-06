@@ -285,6 +285,77 @@ def _dedupe_by_image_url(candidates: list[Candidate]) -> list[Candidate]:
     return out
 
 
+GENERIC_ENTITIES = frozenset(
+    {
+        "human", "person", "face", "photograph", "portrait",
+        "chin", "forehead", "head", "smile", "hair", "eyebrow",
+    }
+)
+
+
+def result_carries_identity_signal(
+    candidates: list[Candidate],
+    identity_signals: list[str],
+) -> bool:
+    """Returns True if results contain a strong identity or face match signal:
+    1. At least one candidate has match_kind in ("full", "partial") on an allowlisted domain.
+    2. At least one candidate on an allowlisted social platform (post or profile) has a retrievable image_url.
+    3. At least one identity_signal is NOT in GENERIC_ENTITIES (case-insensitive) and len >= 3.
+    """
+    from pipeline.verify.allowlist import (
+        CONTENT_KIND_POST,
+        CONTENT_KIND_PROFILE,
+        content_kind,
+        is_allowed,
+    )
+
+    for c in candidates:
+        if not c.page_url:
+            continue
+        if is_allowed(c.page_url):
+            if c.match_kind in ("full", "partial"):
+                return True
+            if c.image_url and content_kind(c.page_url) in (CONTENT_KIND_POST, CONTENT_KIND_PROFILE):
+                return True
+
+    for sig in identity_signals:
+        cleaned = sig.strip().lower()
+        if len(cleaned) >= 3 and cleaned not in GENERIC_ENTITIES:
+            return True
+
+    return False
+
+
+def merge_candidates(existing: list[Candidate], incoming: list[Candidate]) -> list[Candidate]:
+    """Merges incoming candidates into existing, deduplicating by image_url
+    (or page_url if image_url is empty), preserving the higher-quality match_kind.
+    """
+    KIND_PRIORITY = {"full": 4, "partial": 3, "similar": 2, "page": 1, "unknown": 0}
+
+    by_key: dict[str, Candidate] = {}
+    ordered_keys: list[str] = []
+
+    def get_key(c: Candidate) -> str:
+        return c.image_url if c.image_url else f"page:{c.page_url}"
+
+    for c in existing:
+        k = get_key(c)
+        by_key[k] = c
+        ordered_keys.append(k)
+
+    for c in incoming:
+        k = get_key(c)
+        if k not in by_key:
+            by_key[k] = c
+            ordered_keys.append(k)
+        else:
+            cur = by_key[k]
+            if KIND_PRIORITY.get(c.match_kind, 0) > KIND_PRIORITY.get(cur.match_kind, 0):
+                by_key[k] = c
+
+    return [by_key[k] for k in ordered_keys]
+
+
 # --------------------------------------------------------------------------
 # Provider
 # --------------------------------------------------------------------------
@@ -307,24 +378,64 @@ class WebDetectProvider:
         self._serpapi_key = cfg.serpapi_key
         self._http = http or get_http_cache()
         self.max_results = max_results
-        self.backend = self._resolve_backend(backend or getattr(cfg, "web_detect_backend", "auto"))
+        self.backends: list[str] = self._resolve_backend(
+            backend or getattr(cfg, "web_detect_backend", "auto")
+        )
         # Populated per search, read by the audit log. Context only (R-03).
         self.last_identity_signals: list[str] = []
+        self.last_skip_reason: str | None = None
+        self.last_escalation_reason: str | None = None
+        self.last_backends_attempted: list[str] = []
 
-    def _resolve_backend(self, requested: str) -> str | None:
-        """'auto' prefers gcv for its ~10x larger free quota (D-28)."""
-        if requested == "gcv":
-            return "gcv" if self._gcv_key else None
-        if requested == "serpapi":
-            return "serpapi" if self._serpapi_key else None
-        if self._gcv_key:
-            return "gcv"
-        if self._serpapi_key:
-            return "serpapi"
-        return None
+    @property
+    def backend(self) -> str | None:
+        return self.backends[0] if self.backends else None
+
+    @backend.setter
+    def backend(self, val: str | None) -> None:
+        if val is None:
+            self.backends = []
+        elif isinstance(val, list):
+            self.backends = val
+        else:
+            self.backends = [val]
+
+    def _resolve_backend(self, requested: str) -> list[str]:
+        """Returns ordered list of backends to try.
+
+        When WEB_DETECT_BACKEND='auto':
+          - SEARCH_PUBLIC_UPLOAD=1 → ['serpapi', 'gcv'] (Lens benefits from public URL; D-28 note)
+          - SEARCH_PUBLIC_UPLOAD=0 → ['gcv', 'serpapi'] (GCV accepts raw bytes, ~10x larger quota)
+        When set to 'gcv' or 'serpapi', returns a 1-element list.
+        """
+        req = (requested or "").lower()
+        if req == "gcv":
+            return ["gcv"] if self._gcv_key else []
+        if req == "serpapi":
+            return ["serpapi"] if self._serpapi_key else []
+
+        # auto: ordering depends on whether public upload is enabled
+        cfg = get_config()
+        upload_on = bool(getattr(cfg, "search_public_upload", 0))
+
+        if upload_on:
+            # serpapi/Lens first — public URL is available and Lens has richer visual matching
+            res: list[str] = []
+            if self._serpapi_key:
+                res.append("serpapi")
+            if self._gcv_key:
+                res.append("gcv")
+        else:
+            # gcv first — no public URL, and GCV quota is ~10x larger (D-28)
+            res = []
+            if self._gcv_key:
+                res.append("gcv")
+            if self._serpapi_key:
+                res.append("serpapi")
+        return res
 
     def available(self) -> bool:
-        return self.backend is not None
+        return len(self.backends) > 0
 
     # --- backends ------------------------------------------------------
 
@@ -411,23 +522,71 @@ class WebDetectProvider:
         """probe_vec is accepted to satisfy the protocol but deliberately
         unused: a provider never scores a face (R-03).
 
-        public_image_url is only needed by the serpapi backend (D-31).
+        Walks backends in order (e.g. gcv -> serpapi). If GCV yields an identity
+        signal or allowlisted matches, escalation stops. Otherwise, escalates
+        to SerpApi Lens. Respects WEB_DETECT_ESCALATE and SEARCH_PUBLIC_UPLOAD.
         """
-        if self.backend == "gcv":
-            candidates, signals = self._search_gcv(search_image_bytes)
-        elif self.backend == "serpapi":
-            if not public_image_url:
-                raise ValueError(
-                    "serpapi backend needs a publicly reachable image URL "
-                    "(see memory.md D-31: short-expiry S3 presigned GET)"
-                )
-            candidates, signals = self._search_serpapi(public_image_url)
-        else:
+        cfg = get_config()
+        escalate_enabled = bool(getattr(cfg, "web_detect_escalate", 1))
+        search_public_upload = bool(getattr(cfg, "search_public_upload", 0))
+
+        self.last_identity_signals = []
+        self.last_skip_reason = None
+        self.last_escalation_reason = None
+        self.last_backends_attempted = []
+
+        if not self.backends:
             return []
 
-        recovered_profiles = self._recover_instagram_owners(candidates)
-        if recovered_profiles:
-            candidates = candidates + recovered_profiles
+        # If user explicitly requested serpapi (single backend) and no public url
+        if len(self.backends) == 1 and self.backends[0] == "serpapi" and not public_image_url:
+            raise ValueError(
+                "serpapi backend needs a publicly reachable image URL "
+                "(see memory.md D-31: short-expiry S3 presigned GET)"
+            )
 
-        self.last_identity_signals = signals
-        return candidates
+        all_candidates: list[Candidate] = []
+        all_signals: list[str] = []
+        seen_signals: set[str] = set()
+
+        for idx, backend_name in enumerate(self.backends):
+            self.last_backends_attempted.append(backend_name)
+            backend_candidates: list[Candidate] = []
+            backend_signals: list[str] = []
+
+            if backend_name == "gcv":
+                backend_candidates, backend_signals = self._search_gcv(search_image_bytes)
+            elif backend_name == "serpapi":
+                if not public_image_url and not search_public_upload:
+                    self.last_skip_reason = (
+                        "serpapi escalation skipped: local image not publicly hosted and SEARCH_PUBLIC_UPLOAD=0"
+                    )
+                    continue
+                backend_candidates, backend_signals = self._search_serpapi(public_image_url or "")
+
+            all_candidates = merge_candidates(all_candidates, backend_candidates)
+            for s in backend_signals:
+                if s not in seen_signals:
+                    seen_signals.add(s)
+                    all_signals.append(s)
+
+            # Check if quality bar is met
+            has_signal = result_carries_identity_signal(all_candidates, all_signals)
+            if has_signal:
+                # Quality bar met — do not escalate further
+                break
+
+            if not escalate_enabled:
+                break
+
+            if idx + 1 < len(self.backends):
+                self.last_escalation_reason = (
+                    f"backend {backend_name} produced no identity signal or allowlisted candidates; escalating"
+                )
+
+        recovered_profiles = self._recover_instagram_owners(all_candidates)
+        if recovered_profiles:
+            all_candidates = all_candidates + recovered_profiles
+
+        self.last_identity_signals = all_signals
+        return all_candidates
