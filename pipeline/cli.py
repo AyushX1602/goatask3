@@ -164,6 +164,7 @@ def search(
     embedding = embedder.embed(crop)
 
     search_bytes = prepare_search_image(img)
+    head_crop_bytes = prepare_search_image(img, face=face, use_head_crop=True)
     pub_url = public_image_url or state.get("public_image_url")
 
     web_detect = WebDetectProvider()
@@ -172,7 +173,8 @@ def search(
     primary_result = None
     if web_detect.available():
         primary_result = run_pipeline(
-            search_bytes, embedding.vec, [web_detect], detector, embedder, public_image_url=pub_url
+            search_bytes, embedding.vec, [web_detect], detector, embedder,
+            public_image_url=pub_url, head_crop_bytes=head_crop_bytes,
         )
 
     primary_produced_nothing = primary_result is None or not any(
@@ -301,13 +303,15 @@ def run_all(
     (run_dir / "run_state.json").write_text(json.dumps(state, indent=2), encoding="utf-8")
 
     search_bytes = prepare_search_image(img)
+    head_crop_bytes = prepare_search_image(img, face=face, use_head_crop=True)
     web_detect = WebDetectProvider()
     bluesky = BlueskyProvider()
 
     primary_result = None
     if web_detect.available():
         primary_result = run_pipeline(
-            search_bytes, embedding.vec, [web_detect], detector, embedder, public_image_url=public_image_url
+            search_bytes, embedding.vec, [web_detect], detector, embedder,
+            public_image_url=public_image_url, head_crop_bytes=head_crop_bytes,
         )
 
     primary_produced_nothing = primary_result is None or not any(

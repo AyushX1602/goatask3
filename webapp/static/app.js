@@ -266,8 +266,25 @@ function renderResults(data) {
   summaryText.textContent =
     `${corpusNote} Threshold ${data.threshold.toFixed(2)}, margin ${data.margin_required.toFixed(2)}.`;
 
+  // Claimed profiles (e.g. LinkedIn) discovered via profile expansion are
+  // unscored by design (R-28) — but a claim that only exists as a collapsed
+  // table row reads as "nothing found". Surface it next to the verdict.
+  // textContent, never innerHTML: provider URLs are untrusted input (R-26).
+  if (claims.length > 0) {
+    const claimList = claims
+      .slice(0, 3)
+      .map((c) => (c.page_url || c.source || "claim").replace(/^https?:\/\/(www\.)?/, ""))
+      .join(", ");
+    summaryText.textContent +=
+      ` Profile claim(s) found: ${claimList}${claims.length > 3 ? ` +${claims.length - 3} more` : ""}` +
+      ` — recorded as claims, not biometrically scored.`;
+  }
+
   const corroborating = data.candidates.filter((c) => c.decision === "corroborating").length;
   const unverifiable = data.unverifiable_platform_hits || [];
+  const claims = data.candidates.filter(
+    (c) => c.decision === "linked-claim" || c.decision === "conjecture-claim"
+  );
 
   // R-21: the verdict is the headline for every non-MATCH outcome.
   // Rejected candidates go behind a "show diagnostics" toggle.
@@ -301,6 +318,10 @@ function renderResults(data) {
           `engine reported this image on those platforms, but they serve media only to ` +
           `their own crawler, so the face could not be independently re-verified. ` +
           `Recorded, not accepted.`
+        : "") +
+      (claims.length > 0
+        ? ` <strong>${claims.length} profile claim(s)</strong> were found via profile ` +
+          `expansion and are listed in the table below as claims, not face matches.`
         : "");
   } else {
     headlineNoMatch.style.display = "none";

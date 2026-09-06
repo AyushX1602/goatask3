@@ -32,6 +32,7 @@ import numpy as np
 from pipeline.cache.http_cache import HttpCache, get_http_cache
 from pipeline.config import get_config
 from pipeline.search.base import Candidate
+from pipeline.search.uploader import upload_for_search
 from pipeline.search.media_urls import (
     derive_github_profile_url,
     derive_image_url_and_fallbacks,
@@ -518,6 +519,7 @@ class WebDetectProvider:
         search_image_bytes: bytes,
         probe_vec: np.ndarray,
         public_image_url: str | None = None,
+        head_crop_bytes: bytes | None = None,
     ) -> list[Candidate]:
         """probe_vec is accepted to satisfy the protocol but deliberately
         unused: a provider never scores a face (R-03).
@@ -525,6 +527,14 @@ class WebDetectProvider:
         Walks backends in order (e.g. gcv -> serpapi). If GCV yields an identity
         signal or allowlisted matches, escalation stops. Otherwise, escalates
         to SerpApi Lens. Respects WEB_DETECT_ESCALATE and SEARCH_PUBLIC_UPLOAD.
+
+        head_crop_bytes: the 512px head crop (T2.5), built at scan time where
+        the face is already detected. When SEARCH_PUBLIC_UPLOAD=1 and no
+        public_image_url was supplied, the escalation path hosts the HEAD CROP
+        (never the full probe photo — uploader.py structurally enforces
+        is_head_crop=True) on imgbb with a 5-minute expiry and runs Lens on
+        that URL. Upload failure degrades to a recorded skip reason; GCV
+        results already merged are never lost (R-14).
         """
         cfg = get_config()
         escalate_enabled = bool(getattr(cfg, "web_detect_escalate", 1))
@@ -538,11 +548,18 @@ class WebDetectProvider:
         if not self.backends:
             return []
 
-        # If user explicitly requested serpapi (single backend) and no public url
-        if len(self.backends) == 1 and self.backends[0] == "serpapi" and not public_image_url:
+        # If the user explicitly requested serpapi (single backend) with no
+        # public URL and no upload path, the backend cannot run at all.
+        if (
+            len(self.backends) == 1
+            and self.backends[0] == "serpapi"
+            and not public_image_url
+            and not (search_public_upload and head_crop_bytes)
+        ):
             raise ValueError(
                 "serpapi backend needs a publicly reachable image URL "
-                "(see docs/memory.md D-31: short-expiry S3 presigned GET)"
+                "(set SEARCH_PUBLIC_UPLOAD=1 + IMGBB_KEY to host the head crop, "
+                "or supply one — see docs/memory.md D-31)"
             )
 
         all_candidates: list[Candidate] = []
@@ -557,12 +574,31 @@ class WebDetectProvider:
             if backend_name == "gcv":
                 backend_candidates, backend_signals = self._search_gcv(search_image_bytes)
             elif backend_name == "serpapi":
-                if not public_image_url and not search_public_upload:
-                    self.last_skip_reason = (
-                        "serpapi escalation skipped: local image not publicly hosted and SEARCH_PUBLIC_UPLOAD=0"
-                    )
-                    continue
-                backend_candidates, backend_signals = self._search_serpapi(public_image_url or "")
+                lens_url = public_image_url
+                if not lens_url:
+                    if not search_public_upload:
+                        self.last_skip_reason = (
+                            "serpapi escalation skipped: local image not publicly hosted and SEARCH_PUBLIC_UPLOAD=0"
+                        )
+                        continue
+                    # F1a wiring (7 Sep 2026): host the head crop on imgbb
+                    # (5-minute expiry) so Lens escalation works for a plain
+                    # local upload. Any failure degrades to a skip reason —
+                    # an exception here would propagate out of search() and
+                    # lose the GCV candidates already merged (R-14).
+                    if not head_crop_bytes:
+                        self.last_skip_reason = (
+                            "serpapi escalation skipped: no head crop available to host publicly"
+                        )
+                        continue
+                    try:
+                        lens_url = upload_for_search(head_crop_bytes, self._http, is_head_crop=True)
+                    except Exception as exc:
+                        self.last_skip_reason = (
+                            f"serpapi escalation skipped: public upload failed ({type(exc).__name__})"
+                        )
+                        continue
+                backend_candidates, backend_signals = self._search_serpapi(lens_url)
 
             all_candidates = merge_candidates(all_candidates, backend_candidates)
             for s in backend_signals:

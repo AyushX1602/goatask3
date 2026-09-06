@@ -123,13 +123,14 @@ class Config:
     # which made scoped crawling both unnecessary and a step toward
     # pre-selecting results, which the brief forbids.
     bluesky_crawl_limit: int = field(default_factory=lambda: _env_int("BLUESKY_CRAWL_LIMIT", 300))
-    expand_serp_max_calls: int = field(default_factory=lambda: _env_int("EXPAND_SERP_MAX_CALLS", 1))
+    expand_serp_max_calls: int = field(default_factory=lambda: _env_int("EXPAND_SERP_MAX_CALLS", 2))
     web_detect_escalate: int = field(default_factory=lambda: _env_int("WEB_DETECT_ESCALATE", 1))
     search_public_upload: int = field(default_factory=lambda: _env_int("SEARCH_PUBLIC_UPLOAD", 0))
     imgbb_key: str | None = field(default_factory=lambda: _env("IMGBB_KEY"))
 
     # Storage
-    pinata_jwt: str | None = field(default_factory=lambda: _env("PINATA_JWT"))
+    # (IPFS/Pinata cut from MVP scope — nothing to store beyond the bundle
+    # and its anchored hash. The field was dead config; removed 7 Sep 2026.)
 
     # Chain (docs/architecture.md 8, R-15: same code path regardless of which chain)
     evm_chain: str = field(default_factory=lambda: _env("EVM_CHAIN", "anvil"))
@@ -151,7 +152,6 @@ class Config:
             f"imgbb_key={has(self.imgbb_key)}, "
             f"web_detect_backend={self.web_detect_backend}, "
             f"min_face_px={self.min_face_px}, "
-            f"pinata_jwt={has(self.pinata_jwt)}, "
             f"evm_chain={self.evm_chain}, "
             f"evm_private_key={has(self.evm_private_key)}, "
             f"http_cache_enabled={self.http_cache_enabled})"

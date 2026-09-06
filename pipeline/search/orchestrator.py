@@ -21,14 +21,15 @@ def gather(
     providers: list[SearchProvider],
     timeout_s: float = 45.0,
     public_image_url: str | None = None,
+    head_crop_bytes: bytes | None = None,
 ) -> tuple[list[Candidate], list[ProviderReport]]:
     """Runs every available provider concurrently. Returns all candidates
     pooled together, plus one ProviderReport per provider (including
     unavailable and failed ones) for the audit log.
 
-    public_image_url is passed only to providers whose search() accepts it
-    (inspected via signature, so providers unaware of the kwarg — e.g. the
-    Bluesky fallback — are called exactly as before).
+    public_image_url / head_crop_bytes are passed only to providers whose
+    search() accepts them (inspected via signature, so providers unaware of
+    the kwargs — e.g. the Bluesky fallback — are called exactly as before).
     """
     reports: list[ProviderReport] = []
     to_run: list[SearchProvider] = []
@@ -50,11 +51,13 @@ def gather(
         start = time.perf_counter()
         try:
             search_fn = provider.search
-            accepts_url = "public_image_url" in inspect.signature(search_fn).parameters
-            if accepts_url:
-                cands = search_fn(search_image_bytes, probe_vec, public_image_url=public_image_url)
-            else:
-                cands = search_fn(search_image_bytes, probe_vec)
+            sig = inspect.signature(search_fn)
+            kwargs: dict[str, object] = {}
+            if "public_image_url" in sig.parameters:
+                kwargs["public_image_url"] = public_image_url
+            if "head_crop_bytes" in sig.parameters:
+                kwargs["head_crop_bytes"] = head_crop_bytes
+            cands = search_fn(search_image_bytes, probe_vec, **kwargs)
             err = None
         except Exception as exc:  # R-14: provider errors never propagate
             cands = []

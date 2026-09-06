@@ -454,3 +454,73 @@ def test_web_detect_synthesizes_instagram_owner_profile(monkeypatch):
     assert ig_profiles[0].origin == "linked"
     assert ig_profiles[0].image_url == ""
 
+
+
+def test_expansion_runs_on_match_non_social(monkeypatch):
+    """Profile expansion must fire when a strong face match sits on a
+    NON-social domain (MATCH_NON_SOCIAL), not only after a social MATCH.
+    The strong non-social page's outbound LinkedIn link becomes a published
+    claim (origin='linked', decision='linked-claim')."""
+    detector = FaceDetector()
+    embedder = FaceEmbedder()
+
+    img = cv2.imread(str(FIX / "obama1.jpg"))
+    faces = detector.detect(img)
+    crop = align(img, faces[0].kps5)
+    probe_vec = embedder.embed(crop).vec
+
+    faculty_page = "https://example.com/faculty/jdoe"
+    faculty_img = "https://example.com/photos/jdoe.jpg"
+    obama_bytes = (FIX / "obama2.jpg").read_bytes()
+    linkedin_profile = "https://www.linkedin.com/in/barackobama"
+
+    class NonSocialHttp:
+        hits = 0
+        misses = 0
+
+        def get(self, url: str, **kw):
+            class Resp:
+                ok = True
+                status_code = 200
+                content_type = "image/jpeg"
+
+                def __init__(self, c):
+                    self.content = c
+
+                def json(self):
+                    return None
+
+            if url == faculty_img:
+                return Resp(obama_bytes)
+            if url == faculty_page:
+                return Resp(
+                    f'<html><body><a href="{linkedin_profile}">LinkedIn</a></body></html>'.encode()
+                )
+            return Resp(b"")
+
+    monkeypatch.setattr("pipeline.verify.pipeline_run.get_http_cache", lambda: NonSocialHttp())
+
+    provider = FakeProvider(
+        [Candidate(image_url=faculty_img, page_url=faculty_page, source="fake", origin="face")]
+    )
+
+    result = run_pipeline(
+        cv2.imencode(".png", crop)[1].tobytes(),
+        probe_vec,
+        [provider],
+        detector,
+        embedder,
+        policy=POLICY,
+        expand_profiles=True,
+    )
+
+    assert result.match.verdict == "MATCH_NON_SOCIAL"
+
+    claim = next(
+        (r for r in result.match.all_scored if r.candidate.page_url == linkedin_profile),
+        None,
+    )
+    assert claim is not None, "expansion did not run on MATCH_NON_SOCIAL"
+    assert claim.decision == "linked-claim"
+    assert claim.score is None
+    assert claim.candidate.origin == "linked"

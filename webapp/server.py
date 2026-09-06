@@ -146,6 +146,10 @@ async def _handle_probe(
     # caused the API to not recognise the subject at all. See
     # pipeline/search/image_prep.py for the measured comparison.
     search_image = prepare_search_image(img)
+    # Head crop (T2.5): the query representation used by the SerpApi/Lens
+    # escalation path, which hosts it publicly for 5 minutes (F1a). Built
+    # here because the face is already detected — no re-detection downstream.
+    head_crop = prepare_search_image(img, face=face, use_head_crop=True)
 
     liveness_label = liveness.label if is_live_capture else "not_applicable"
     liveness_passed = liveness.passed if is_live_capture else True
@@ -157,6 +161,7 @@ async def _handle_probe(
         "is_live_capture": is_live_capture,
         "aligned_png": crop_bytes,  # for the UI preview + embedding provenance
         "search_image": search_image,  # what actually goes to the search provider
+        "head_crop": head_crop,  # hosted publicly only on the Lens escalation path (F1a)
         "liveness": {
             "passed": liveness_passed,
             "score": liveness.score if is_live_capture else None,
@@ -222,6 +227,7 @@ def search(run_id: str) -> SearchResponse:
     # Original photograph, not the aligned crop — see image_prep.py
     search_image = run_state["search_image"]
     public_image_url = run_state.get("public_image_url")
+    head_crop_bytes = run_state.get("head_crop")
 
     primary_result = None
     primary_providers_queried: list[str] = []
@@ -244,6 +250,7 @@ def search(run_id: str) -> SearchResponse:
         primary_result = run_pipeline(
             search_image, probe_vec, [_web_detect], _detector, _embedder,
             public_image_url=public_image_url,
+            head_crop_bytes=head_crop_bytes,
         )
         _record_delta(_web_detect.name, before)
         primary_providers_queried = [_web_detect.name]

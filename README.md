@@ -111,10 +111,15 @@ Copy `.env.example` to `.env` and set:
   ~1,000 free units/month. Accepts raw image bytes, so no public-URL problem.
   Needs a GCP project with billing attached (the free tier is not charged).
 - `SERPAPI_KEY` — Google Lens via SerpApi. **Secondary.** ~100 free
-  searches/month. Needs a publicly reachable image URL.
+  searches/month. Needs a publicly reachable image URL. Also powers the
+  LinkedIn profile lookups during profile expansion.
+- `IMGBB_KEY` + `SEARCH_PUBLIC_UPLOAD=1` — lets a plain local upload escalate
+  to Lens when GCV finds nothing: the head crop (never the full photo) is
+  hosted on imgbb for 5 minutes and Lens runs on that URL. Upload failure
+  degrades to a recorded skip reason; GCV results are never lost.
 
-Neither is required for the pipeline to run; both are required to search the
-real open web instead of the Bluesky fallback.
+Neither key is required for the pipeline to run; a search key is required to
+search the real open web instead of the Bluesky fallback.
 
 ### CLI
 

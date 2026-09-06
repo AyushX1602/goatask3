@@ -2,37 +2,37 @@
 # Every entry here has a prebuilt wheel for Windows / CPython 3.12 (verified 5 Sep 2026).
 
 # Face core
-onnxruntime==1.29.0
-opencv-python==5.0.0.93
-numpy==2.5.2
-Pillow==12.3.0
+onnxruntime
+opencv-python
+numpy
+Pillow
 
 # Perceptual hash for candidate dedupe
-ImageHash==4.3.2
+ImageHash
 
 # Networking
-requests==2.34.2
-httpx==0.28.1
-websockets==17.1
+requests
+httpx
+websockets
 
 # CLI + console output (recording deliverable, see rules.md)
-typer==0.27.2
-rich==15.0.0
+typer
+rich
 
 # Config + retries
-python-dotenv==1.2.3
-tenacity==9.1.4
+python-dotenv
+tenacity
 
 # Evidence hashing (F7) — keccak256, EVM-compatible (differs from SHA3-256)
-eth-hash[pycryptodome]==0.7.1
+eth-hash[pycryptodome]
 
 # Chain client (F8/F9) — talks to Anvil (required, D-27) or any EVM chain
-web3==7.14.0
+web3
 
 # Testing
-pytest==8.4.1
+pytest
 
 # Local demo UI (architecture.md 5a)
-fastapi==0.121.1
-uvicorn[standard]==0.38.0
-python-multipart==0.0.20
+fastapi
+uvicorn[standard]
+python-multipart

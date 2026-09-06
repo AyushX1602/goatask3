@@ -299,3 +299,85 @@ def test_generic_entities_contains_all_11_required_terms():
         f"GENERIC_ENTITIES is missing: {required - GENERIC_ENTITIES}"
     )
     assert len(GENERIC_ENTITIES) >= 11
+
+
+def test_escalation_uploads_head_crop_when_no_public_url(monkeypatch):
+    """11. F1a wiring: with SEARCH_PUBLIC_UPLOAD=1 + IMGBB_KEY set and no
+    public_image_url, the Lens escalation hosts the head crop and Lens runs
+    on the returned URL."""
+    monkeypatch.setenv("GCV_API_KEY", "fake-gcv")
+    monkeypatch.setenv("SERPAPI_KEY", "fake-serp")
+    monkeypatch.setenv("WEB_DETECT_BACKEND", "auto")
+    monkeypatch.setenv("SEARCH_PUBLIC_UPLOAD", "1")
+    monkeypatch.setenv("IMGBB_KEY", "fake-imgbb")
+
+    provider = WebDetectProvider()
+    lens_urls: list[str] = []
+
+    def mock_gcv(bytes_):
+        return ([], ["Human"])  # no identity signal -> escalate
+
+    def mock_serp(url_):
+        lens_urls.append(url_)
+        return ([], ["SerpApi Signal"])
+
+    monkeypatch.setattr(provider, "_search_gcv", mock_gcv)
+    monkeypatch.setattr(provider, "_search_serpapi", mock_serp)
+
+    import pipeline.search.web_detect as wd
+
+    def mock_upload(jpeg_bytes, http, *, is_head_crop):
+        assert is_head_crop is True
+        assert jpeg_bytes == b"head-crop-jpeg"
+        return "https://i.ibb.co/fake/crop.jpg"
+
+    monkeypatch.setattr(wd, "upload_for_search", mock_upload)
+
+    cands = provider.search(b"image", np.zeros(512), head_crop_bytes=b"head-crop-jpeg")
+    assert lens_urls == ["https://i.ibb.co/fake/crop.jpg"]
+    assert provider.last_skip_reason is None
+    # Lens returned a non-generic identity signal, so escalation stops there
+    # (quality bar met) — gcv is never attempted. Correct behaviour.
+    assert provider.last_backends_attempted == ["serpapi"]
+    assert cands == []
+
+
+def test_upload_failure_keeps_gcv_results(monkeypatch):
+    """12. A failed public upload must degrade to a skip reason — never lose
+    the GCV candidates already merged (R-14)."""
+    monkeypatch.setenv("GCV_API_KEY", "fake-gcv")
+    monkeypatch.setenv("SERPAPI_KEY", "fake-serp")
+    monkeypatch.setenv("WEB_DETECT_BACKEND", "auto")
+    monkeypatch.setenv("SEARCH_PUBLIC_UPLOAD", "1")
+    monkeypatch.setenv("IMGBB_KEY", "fake-imgbb")
+
+    provider = WebDetectProvider()
+
+    from pipeline.search.base import Candidate as C
+
+    gcv_candidate = C(
+        image_url="https://example.com/gcv-hit.jpg",
+        page_url="https://example.com/gcv-hit.jpg",
+        source="gcv_web_detection",
+    )
+
+    def mock_gcv(bytes_):
+        return ([gcv_candidate], ["Human"])  # candidate present, no strong signal
+
+    def mock_serp(url_):
+        raise AssertionError("Lens must not run when the upload failed")
+
+    monkeypatch.setattr(provider, "_search_gcv", mock_gcv)
+    monkeypatch.setattr(provider, "_search_serpapi", mock_serp)
+
+    import pipeline.search.web_detect as wd
+    from pipeline.search.uploader import UploaderError
+
+    def mock_upload(jpeg_bytes, http, *, is_head_crop):
+        raise UploaderError("imgbb down")
+
+    monkeypatch.setattr(wd, "upload_for_search", mock_upload)
+
+    cands = provider.search(b"image", np.zeros(512), head_crop_bytes=b"head-crop-jpeg")
+    assert cands == [gcv_candidate]
+    assert "public upload failed" in (provider.last_skip_reason or "")

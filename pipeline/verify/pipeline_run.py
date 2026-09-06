@@ -313,6 +313,7 @@ def run_pipeline(
     max_workers: int = 8,
     public_image_url: str | None = None,
     expand_profiles: bool = True,
+    head_crop_bytes: bytes | None = None,
 ) -> PipelineResult:
     """The single shared verification loop (F4).
 
@@ -339,7 +340,8 @@ def run_pipeline(
     http = get_http_cache()
 
     all_candidates, provider_reports = gather(
-        search_image_bytes, probe_vec, providers, public_image_url=public_image_url
+        search_image_bytes, probe_vec, providers, public_image_url=public_image_url,
+        head_crop_bytes=head_crop_bytes,
     )
 
     identity_signals: list[str] = []
@@ -516,13 +518,23 @@ def run_pipeline(
         scored, policy, allowed_domains=allowed_domains, prerejected=prerejected
     )
 
-    # T2.6 / R-28: Profile expansion, post-threshold and face-gated
-    if expand_profiles and match.best is not None:
+    # T2.6 / R-28: Profile expansion, post-threshold and face-gated.
+    # Runs when there is strong face evidence on a social platform (MATCH)
+    # or off it (MATCH_NON_SOCIAL — expanding outbound social links from a
+    # high-scoring non-social page is the same published-claims mechanism).
+    # Deliberately NOT on NO_MATCH: without a face-verified page there is no
+    # trusted handle, and searching by an identity *name* is forbidden (D-45).
+    if expand_profiles and (match.best is not None or match.verdict == "MATCH_NON_SOCIAL"):
         from pipeline.search.expand import expand_verified_candidates
 
-        verified_cands = [match.best.candidate] + [
-            r.candidate for r in match.all_scored if r.decision == "corroborating"
+        verified_cands = [
+            r.candidate for r in match.all_scored if r.decision in ("ACCEPT", "corroborating")
         ]
+        if match.verdict == "MATCH_NON_SOCIAL":
+            verified_cands += [
+                r.candidate for r in match.all_scored
+                if r.decision == "reject-domain" and r.score is not None and r.score >= policy.threshold
+            ]
 
         def _get_html(url: str) -> tuple[bool, bytes]:
             try:
@@ -535,11 +547,20 @@ def run_pipeline(
         if expanded:
             for exp_cand in expanded:
                 if exp_cand.origin == "linked" or not exp_cand.image_url:
+                    # Label follows origin: a published claim on a verified page is
+                    # a linked-claim; a structural same-handle guess is a
+                    # conjecture-claim. The old code labelled both linked-claim,
+                    # misreporting guesses as published claims.
+                    decision_label = (
+                        "linked-claim" if exp_cand.origin == "linked" else "conjecture-claim"
+                    )
                     prerejected.append(
                         (
                             exp_cand,
-                            "linked-claim",
-                            "claimed profile link on verified page (unscored)",
+                            decision_label,
+                            "claimed profile link on verified page (unscored)"
+                            if decision_label == "linked-claim"
+                            else "same-handle guess (structural derivation, no published claim; unscored)",
                         )
                     )
                 else:
@@ -566,8 +587,8 @@ def run_pipeline(
                         prerejected.append(
                             (
                                 exp_cand,
-                                "linked-claim",
-                                "media unavailable on expanded profile, preserved as linked claim",
+                                "conjecture-claim" if exp_cand.origin == "conjecture" else "linked-claim",
+                                "media unavailable on expanded profile, preserved as unscored claim",
                             )
                         )
 

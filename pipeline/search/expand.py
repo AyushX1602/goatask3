@@ -286,7 +286,7 @@ def expand_verified_candidates(
                                         h_info = extract_handle(clean_bio)
                                         if h_info:
                                             discovered_urls.add(clean_bio)
-                                            _add_expanded_candidate(expanded_candidates, h_info[0], clean_bio, h_info[1])
+                                            _add_published_claim(expanded_candidates, h_info[0], clean_bio, h_info[1])
                             continue
 
                         clean = link.rstrip("/")
@@ -294,7 +294,7 @@ def expand_verified_candidates(
                             h_info = extract_handle(clean)
                             if h_info:
                                 discovered_urls.add(clean)
-                                _add_expanded_candidate(expanded_candidates, h_info[0], clean, h_info[1])
+                                _add_published_claim(expanded_candidates, h_info[0], clean, h_info[1])
             except Exception:
                 pass
 
@@ -310,6 +310,30 @@ def expand_verified_candidates(
                     expanded_candidates.append(lc)
 
     return expanded_candidates
+
+
+def _add_published_claim(
+    target_list: list[Candidate], platform: str, url: str, handle: str
+) -> None:
+    """An outbound link on a face-verified page is a PUBLISHED claim (R-28
+    taxonomy: origin='linked') — not a structural guess. GitHub keeps the
+    origin='face' path via _add_expanded_candidate because its avatar is
+    publicly fetchable and can be face-gated like any other candidate.
+    (Fixes the doc-vs-code mismatch where outbound links were labelled
+    'conjecture' — the module docstring and tests always described them as
+    linked claims.)"""
+    if platform == "github":
+        _add_expanded_candidate(target_list, platform, url, handle)
+        return
+    target_list.append(
+        Candidate(
+            page_url=url,
+            image_url="",
+            source=f"expand-{platform}",
+            origin="linked",
+            image_url_fallbacks=(),
+        )
+    )
 
 
 def _add_expanded_candidate(
