@@ -26,8 +26,8 @@ face scan / upload  ->  web/social search  ->  local re-verification (ArcFace)
 2. **Genuine web search.** The *original* photo (not the aligned crop —
    sending the crop measurably degrades or defeats identity recognition, see
    `pipeline/search/image_prep.py`) is sent to Google Cloud Vision's
-   `WEB_DETECTION` feature (primary) or SerpApi Google Lens (secondary, needs
-   a public image URL). This is a real API call against the live web on
+   `WEB_DETECTION` feature (primary) or SerpApi Google Lens (secondary).
+   This is a real API call against the live web on
    every run — nothing is hardcoded or pre-picked. A keyless Bluesky fallback
    exists so the repo is runnable with zero API keys, at the cost of
    searching a small self-built corpus instead of the open web (this is
@@ -113,10 +113,12 @@ Copy `.env.example` to `.env` and set:
 - `SERPAPI_KEY` — Google Lens via SerpApi. **Secondary.** ~100 free
   searches/month. Needs a publicly reachable image URL. Also powers the
   LinkedIn profile lookups during profile expansion.
-- `IMGBB_KEY` + `SEARCH_PUBLIC_UPLOAD=1` — lets a plain local upload escalate
-  to Lens when GCV finds nothing: the head crop (never the full photo) is
-  hosted on imgbb for 5 minutes and Lens runs on that URL. Upload failure
-  degrades to a recorded skip reason; GCV results are never lost.
+- `SEARCH_LENS_UPLOAD=1` — lets a plain local upload escalate to Lens when
+  GCV finds nothing: the head crop (never the full photo) is uploaded
+  directly to SerpApi (POST /image → image_id, held ~10 min on SerpApi's
+  side — never on a public image host) and Lens runs on that image_id.
+  Upload failure degrades to a recorded skip reason; GCV results are never
+  lost.
 
 Neither key is required for the pipeline to run; a search key is required to
 search the real open web instead of the Bluesky fallback.

@@ -15,7 +15,7 @@ none of those exist; OpenTimestamps, IPFS, and C2PA were all deferred (§9 in
 `design.md`) and never implemented. It also showed SerpApi Lens as primary
 with GCV second, which is the reverse of `pipeline/config.py`'s actual
 `_resolve_backend()` ordering (GCV first for its ~10× larger free quota,
-unless `SEARCH_PUBLIC_UPLOAD=1`, in which case Lens goes first because the
+unless `SEARCH_LENS_UPLOAD=1`, in which case Lens goes first because the
 upload makes it reachable). Both corrected below.
 
 ```
@@ -40,8 +40,8 @@ upload makes it reachable). Both corrected below.
       │ quality.py   (size gate)      │  │    └ serpapi  Lens         │  commitment.py
       │ headcrop.py  (search query    │  │        (needs a public URL │
       │   representation, gated on    │  │         — see uploader.py) │ chain/
-      │   R-27; not the embedding)    │  ├─ uploader.py  (imgbb hop,  │  evm.py
-      │                               │  │    head-crop only, off by  │  reverify.py
+      │   R-27; not the embedding)    │  ├─ uploader.py  (SerpApi     │  evm.py
+      │                               │  │    direct upload (off by   │  reverify.py
       │                               │  │    default — see §4.2)    │  tamper.py
       │                               │  ├─ expand.py    (F3: 4-tier │
       │                               │  │    profile expansion,     │ contracts/
@@ -130,7 +130,7 @@ INPUT (two first-class modes — D-19)
                     │    backend serpapi: google_lens, needs a   │
                     │                     public URL — goes first│
                     │                     only if                │
-                    │                     SEARCH_PUBLIC_UPLOAD=1  │
+                    │                     SEARCH_LENS_UPLOAD=1   │
                     └──────────────────┬──────────────────────────┘
                                        │
                     ┌──────────────────┴────────────────────┐
@@ -307,7 +307,7 @@ proven wrong once: a GCV response can return 20 candidates that are all
 results, zero actual signal. Escalating on count alone would never trigger in
 that case, which is exactly the failure this function closes.
 
-Backend order depends on `SEARCH_PUBLIC_UPLOAD`: `gcv` first when it's off
+Backend order depends on `SEARCH_LENS_UPLOAD`: `gcv` first when it's off
 (the default — GCV takes raw bytes and has ~10× the free quota, D-28); `serpapi`
 first when it's on (Lens is now reachable via `uploader.py` and answers a
 different, often more useful, question — "where does this exact image
@@ -315,25 +315,33 @@ appear" rather than "what looks similar").
 
 ## 4.2 Uploader — the narrowest version of a hop every Lens-based competitor needs
 
-SerpApi's `google_lens` engine has no bytes-upload path — confirmed against
-SerpApi's own documentation, not assumed. Every repo in this project's
-competitor review that uses Lens (`docs/architecture-deep-dive.md` §9) must
-therefore host the probe image publicly first. `pipeline/search/uploader.py`
-does the same thing, deliberately narrower:
+SerpApi's `google_lens` engine is documented around an image URL, but it also
+exposes a direct upload endpoint — `POST https://serpapi.com/image` returns
+an `image_id` that `engine=google_lens` accepts as `image_id=` (verified
+live: the endpoint answers 401 without a key, and the limits are documented
+at `serpapi.com/image-api`: JPG/PNG/WebP, 500 KB max). Discovered in the
+hhgoa-provenance review; adopted 7 Sep 2026, **replacing the earlier imgbb
+hop** (retained as a historical record in `docs/memory.md`).
+
+That changes the trade this module makes, in our favour:
 
 - Uploads **only the background-removed head crop** (`headcrop.py`'s
   output), never the original photograph. This is structurally enforced —
-  `upload_for_search()` takes a keyword-only `is_head_crop: bool` and
+  `upload_crop_to_serpapi()` takes a keyword-only `is_head_crop: bool` and
   **raises `ValueError` if it is `False`**, so passing the original photo
   through this function is a hard error, not a comment someone can ignore.
-- `imgbb.com`, 5-minute expiry (the shortest the API accepts is 60s; 300s
-  gives enough time for the search round-trip without lingering).
-- Gated by `SEARCH_PUBLIC_UPLOAD` (default `0`) and `IMGBB_KEY`. A fresh
-  clone with no `.env` changes never uploads anything.
+- The crop is held by SerpApi for ~10 minutes and is never placed on a
+  public image host. The earlier imgbb design published a (masked) head
+  crop to a third-party host; that disclosure is gone, not softened.
+- Gated by `SEARCH_LENS_UPLOAD` (default `0`). A fresh clone with no `.env`
+  changes never uploads anything — sending the head crop to SerpApi is a
+  disclosure the user opts into explicitly.
+- Upload failure degrades to a recorded skip reason, never a crash; the GCV
+  path is unaffected (R-14).
 
-This is a real, disclosed trade-off, not a free feature: enabling it does
-publish a masked head crop to a third-party host for a few minutes. The
-README states this plainly rather than treating it as a footnote.
+Why the imgbb variant was retired: one fewer API key, one fewer third-party
+host touching biometric data, one fewer service that can fail
+mid-recording — same escalation behaviour.
 
 ## 5. Stack decisions
 
@@ -510,8 +518,9 @@ face-chain-verify/
 │   ├─ search/      base.py  orchestrator.py  image_prep.py
 │   │               web_detect.py       # PRIMARY: gcv + serpapi backends, quality-
 │   │                                   #   triggered escalation between them (F1/F2)
-│   │               uploader.py         # F1a: head-crop-only public hosting for Lens,
-│   │                                   #   off by default (SEARCH_PUBLIC_UPLOAD)
+│   │               uploader.py         # F1a-rev: head-crop-only DIRECT upload to
+│   │                                   #   SerpApi for Lens (no public host),
+│   │                                   #   off by default (SEARCH_LENS_UPLOAD)
 │   │               expand.py           # F3: post-threshold profile expansion,
 │   │                                   #   face/linked/conjecture origin tiers (R-28)
 │   │               serp_resolve.py     # LinkedIn/Instagram resolution via Google SERP
@@ -574,10 +583,9 @@ Single source of truth in `pipeline/config.py`, loaded from `.env` with defaults
 |---|---|---|
 | `SERPAPI_KEY` | none | SerpApi Lens backend reports `available() == False`, skipped silently |
 | `GCV_API_KEY` | none | Google Cloud Vision `WEB_DETECTION` backend skipped. Either key alone is sufficient |
-| `WEB_DETECT_BACKEND` | `auto` | `auto` orders backends by `SEARCH_PUBLIC_UPLOAD` (see §4.1). Force with `serpapi` or `gcv` |
+| `WEB_DETECT_BACKEND` | `auto` | `auto` orders backends by `SEARCH_LENS_UPLOAD` (see §4.1). Force with `serpapi` or `gcv` |
 | `WEB_DETECT_ESCALATE` | `1` | set `0` to disable quality-triggered escalation and use only the first backend |
-| `SEARCH_PUBLIC_UPLOAD` | `0` | set `1` to enable `uploader.py`'s head-crop-only imgbb hop and let SerpApi Lens go first in `auto` ordering. **Off by default on every fresh clone** |
-| `IMGBB_KEY` | none | required if `SEARCH_PUBLIC_UPLOAD=1`; otherwise the upload path is skipped with a recorded reason, never a crash |
+| `SEARCH_LENS_UPLOAD` | `0` | set `1` to enable `uploader.py`'s head-crop-only direct upload to SerpApi (`POST /image` → `image_id`) and let SerpApi Lens go first in `auto` ordering. The crop is held by SerpApi ~10 min, never a public image host. **Off by default on every fresh clone** |
 | `EXPAND_SERP_MAX_CALLS` | `1` | caps how many Google SERP calls `expand.py`/`serp_resolve.py` may make per run, to protect SerpApi quota |
 | `MIN_FACE_PX` | `50` | quality gate, derived in §2a. Faces smaller than this are rejected, not scored |
 | `BLUESKY_CRAWL_LIMIT` | `300` | fallback-provider corpus size. Lowered from 2000: measured ~86 faces per 200 posts at ~27 s, and the fallback is a demo aid, not the primary path |

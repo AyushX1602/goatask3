@@ -136,19 +136,26 @@ diagnosis and the fix (F1/F1b, quality-triggered escalation).
 
 ### 4.2 The public-URL problem, and why it's now solved narrowly
 
-SerpApi Lens has no bytes-upload path — full stop, confirmed against
-SerpApi's own documentation, not assumed. Every repo that uses Lens
-(including both `HHG-T3` and `face-evidence-blockchain`, see §9) must
-therefore upload the image somewhere public first.
+SerpApi's `google_lens` engine is documented around an image URL, but it
+also exposes a direct upload endpoint: `POST https://serpapi.com/image`
+returns an `image_id` that `engine=google_lens` accepts as `image_id=`
+(verified live — the endpoint answers 401 without a key, and its limits are
+documented at `serpapi.com/image-api`: JPG/PNG/WebP, 500 KB max). Found in
+the hhgoa-provenance review; adopted 7 Sep 2026. This removes the public-
+hosting hop entirely: the crop is held by SerpApi for ~10 minutes, never
+placed on a public image host, and needs no extra API key beyond
+`SERPAPI_KEY`.
 
 Our answer, `pipeline/search/uploader.py` (F1a): upload **only the
-background-removed head crop**, never the original photograph, to imgbb
-with a 5-minute expiry. This is structurally enforced, not left to caller
-discipline — `upload_for_search()` takes a keyword-only `is_head_crop: bool`
+background-removed head crop**, never the original photograph, directly to
+SerpApi. This is structurally enforced, not left to caller
+discipline — `upload_crop_to_serpapi()` takes a keyword-only `is_head_crop: bool`
 argument and **raises `ValueError` if it is `False`**, so passing the
 original photo through this function is a hard error, not a documentation
-promise. `SEARCH_PUBLIC_UPLOAD` defaults to `0`; a fresh clone never uploads
-anything until the owner opts in.
+promise. `SEARCH_LENS_UPLOAD` defaults to `0`; a fresh clone never uploads
+anything until the owner opts in. (The earlier variant uploaded the crop to
+imgbb with a 5-minute expiry; it is retired — the public-host disclosure it
+required is gone, not softened.)
 
 ### 4.3 Head crop as a search query — measured, not borrowed on faith
 

@@ -248,7 +248,7 @@ Two interchangeable backends behind one provider, both **[V] proven live**:
 | Backend | Endpoint | Free tier | Needs a public URL? |
 |---|---|---|---|
 | `gcv` (default first) | `vision.googleapis.com/v1/images:annotate`, feature `WEB_DETECTION` | ~1,000/mo | No — accepts raw base64 |
-| `serpapi` | `serpapi.com/search?engine=google_lens&url=<img>` | ~100/mo | Yes — see `uploader.py`, §2.1c |
+| `serpapi` | `serpapi.com/search?engine=google_lens&url=<img>` **or** `&image_id=<id>` | ~100/mo | With a URL, yes; with `SEARCH_LENS_UPLOAD=1`, the head crop is uploaded directly to SerpApi (`POST /image`) — no public host involved (§2.1c) |
 
 **Backend selection is no longer "pick one and commit."** `_resolve_backend()`
 returns an *ordered list*; `search()` tries the first, and — only if the
@@ -317,33 +317,39 @@ candidates can look exactly like success to a count-based check. The escalation
 decision is entirely about whether the provider actually claimed to
 recognise something, not how many things it returned.
 
-Backend ordering in `auto` mode depends on `SEARCH_PUBLIC_UPLOAD` (§2.1c):
+Backend ordering in `auto` mode depends on `SEARCH_LENS_UPLOAD` (§2.1c):
 `["gcv", "serpapi"]` when it's off (the default — GCV's larger quota wins the
-tie, D-28), `["serpapi", "gcv"]` when it's on (Lens becomes reachable and
-often answers a more specific question than GCV's visual-similarity fallback).
+tie, D-28), `["serpapi", "gcv"]` when it's on (Lens becomes reachable — via
+the direct head-crop upload — and often answers a more specific question
+than GCV's visual-similarity fallback).
 
 ### 2.1c Public image hosting for Lens — `search/uploader.py`  ·  **off by default**
 
-SerpApi's `google_lens` engine has no bytes-upload path (confirmed against
-SerpApi's own documentation) — it needs a publicly reachable URL. This module
-is the narrowest possible version of that requirement:
+SerpApi's `google_lens` engine is documented around an image URL, but it also
+exposes a direct upload endpoint — `POST https://serpapi.com/image` →
+`{"image_id": ...}` — which `engine=google_lens` accepts as `image_id=`
+(verified live; limits at `serpapi.com/image-api`: JPG/PNG/WebP, 500 KB max).
+This module is the narrowest possible version of that requirement — and it
+needs no public image host at all:
 
 ```python
-def upload_for_search(
+def upload_crop_to_serpapi(
     jpeg_bytes: bytes, http: HttpCache | None = None, *, is_head_crop: bool,
 ) -> str:
-    """Uploads jpeg_bytes to imgbb with a 5-minute expiry and returns the
-    hosted URL. is_head_crop is keyword-only and STRUCTURALLY enforced:
-    raises ValueError if False. Uploading the original probe photo through
-    this function is a hard error, not a comment someone can ignore."""
+    """Uploads the head crop directly to SerpApi (POST /image) and returns
+    the image_id for engine=google_lens (held ~10 min on SerpApi's side —
+    never a public image host). is_head_crop is keyword-only and
+    STRUCTURALLY enforced: raises ValueError if False. Uploading the
+    original probe photo through this function is a hard error, not a
+    comment someone can ignore."""
 ```
 
-Gated by `SEARCH_PUBLIC_UPLOAD` (default `0`) and `IMGBB_KEY`. A fresh clone
-with no `.env` changes never uploads anything. Only `headcrop.py`'s output —
-the background-removed head crop, never the full photograph — may be passed
-in. This is a real, disclosed trade-off: turning it on does publish a masked
-head crop to a third-party host for a few minutes, and the README states
-that plainly rather than treating it as a footnote.
+Gated by `SEARCH_LENS_UPLOAD` (default `0`). A fresh clone with no `.env`
+changes never uploads anything. Only `headcrop.py`'s output — the
+background-removed head crop, never the full photograph — may be passed in.
+The earlier variant hosted the crop on imgbb with a 5-minute expiry; it is
+retired (7 Sep 2026) — one fewer API key, one fewer third-party host
+touching biometric data, same escalation behaviour.
 
 ### 2.2 Bluesky provider — `search/bluesky.py`  ·  **KEYLESS FALLBACK ONLY**
 

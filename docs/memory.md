@@ -1440,8 +1440,8 @@ All 11 required terms present; test 10 in `test_backend_escalation.py` verifies 
 
 ### F1b — Auto backend ordering
 `_resolve_backend("auto")`:
-- `SEARCH_PUBLIC_UPLOAD=1` → `["serpapi", "gcv"]` (Lens benefits from public URL)
-- `SEARCH_PUBLIC_UPLOAD=0` (default) → `["gcv", "serpapi"]` (GCV accepts raw bytes, ~10x larger quota, D-28)
+- `SEARCH_LENS_UPLOAD=1` → `["serpapi", "gcv"]` (Lens reachable via the direct head-crop upload; renamed from `SEARCH_PUBLIC_UPLOAD` in F1a-rev, 7 Sep 2026)
+- `SEARCH_LENS_UPLOAD=0` (default) → `["gcv", "serpapi"]` (GCV accepts raw bytes, ~10x larger quota, D-28)
 Test 9 in `test_backend_escalation.py` verifies both orderings.
 
 ### F1a — Temporary public image hosting
@@ -1451,7 +1451,18 @@ Test 9 in `test_backend_escalation.py` verifies both orderings.
 - imgbb.com API with `expiration=300` (5 min). Key passed in `params` (not body); image as base64 in `form_data`.
 - `HttpCache.request()` extended with `form_data` parameter; cache key uses SHA-256 of field values.
 - 7/7 unit tests passing in `tests/test_uploader.py`.
-- **Acceptance run not yet executed** — requires `IMGBB_KEY` + `HTTP_CACHE=0 SEARCH_PUBLIC_UPLOAD=1`.
+- **SUPERSEDED 7 Sep 2026 by F1a-rev (below) — kept as the historical record.**
+
+### F1a-rev — Direct SerpApi upload (imgbb removed)
+`pipeline/search/uploader.py`: `upload_crop_to_serpapi(jpeg_bytes, http, *, is_head_crop)`.
+- Discovery: the hhgoa-provenance (TRACE) review found that SerpApi **does** document a direct upload endpoint — `POST https://serpapi.com/image` → `{"image_id": ...}` — which `engine=google_lens` accepts as `image_id=`. The earlier "no bytes-upload path, full stop" claim in `architecture-deep-dive.md` §4.2 was wrong and has been rewritten. Verified live: the endpoint answers 401 without a key (exists, auth-gated); limits at `serpapi.com/image-api` (JPG/PNG/WebP, 500 KB max — our 512px head crop is ~30–80 KB).
+- Why the swap: the imgbb hop placed the (masked) head crop on a **public** image host for 5 minutes — a disclosure that sat badly with the project's own thesis (biometric data consented and controlled). Direct upload holds the crop on SerpApi's side ~10 min and touches no public host. Also: one fewer API key (`IMGBB_KEY` deleted), one fewer service that can fail mid-recording, net-negative line count.
+- `UploaderDisabled` renamed `UploadForSearchDisabled`; `UploaderError` renamed `UploadError`.
+- `SEARCH_PUBLIC_UPLOAD`/`IMGBB_KEY` replaced by a single opt-in flag: `SEARCH_LENS_UPLOAD=1`. Fresh clones never upload anything.
+- `HttpCache.request()` extended with `files=` (multipart) support; cache key uses SHA-256 of file contents (bytes never written to the key); `api_key` travels in `params` so R-10 redaction covers it.
+- `web_detect.py` escalation order: public URL → direct SerpApi upload → recorded skip reason. GCV results never lost on upload failure (R-14).
+- 8/8 unit tests passing in `tests/test_uploader.py`; full suite 294 passed.
+- **Acceptance run not yet executed** — requires `SERPAPI_KEY` + `SEARCH_LENS_UPLOAD=1 HTTP_CACHE=0`.
   R-13: "a recorded negative result is a valid outcome."
 
 ### F2b — NO_CANDIDATES vs NO_MATCH audit

@@ -125,8 +125,10 @@ class Config:
     bluesky_crawl_limit: int = field(default_factory=lambda: _env_int("BLUESKY_CRAWL_LIMIT", 300))
     expand_serp_max_calls: int = field(default_factory=lambda: _env_int("EXPAND_SERP_MAX_CALLS", 2))
     web_detect_escalate: int = field(default_factory=lambda: _env_int("WEB_DETECT_ESCALATE", 1))
-    search_public_upload: int = field(default_factory=lambda: _env_int("SEARCH_PUBLIC_UPLOAD", 0))
-    imgbb_key: str | None = field(default_factory=lambda: _env("IMGBB_KEY"))
+    # Lens escalation upload: 1 = when GCV yields nothing, the HEAD CROP is
+    # uploaded directly to SerpApi (POST /image → image_id, held ~10 min on
+    # SerpApi's side). No public image host is involved at any point.
+    search_lens_upload: int = field(default_factory=lambda: _env_int("SEARCH_LENS_UPLOAD", 0))
 
     # Storage
     # (IPFS/Pinata cut from MVP scope — nothing to store beyond the bundle
@@ -149,7 +151,6 @@ class Config:
             "Config("
             f"serpapi_key={has(self.serpapi_key)}, "
             f"gcv_api_key={has(self.gcv_api_key)}, "
-            f"imgbb_key={has(self.imgbb_key)}, "
             f"web_detect_backend={self.web_detect_backend}, "
             f"min_face_px={self.min_face_px}, "
             f"evm_chain={self.evm_chain}, "

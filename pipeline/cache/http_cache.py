@@ -199,6 +199,7 @@ class HttpCache:
         params: dict[str, Any] | None = None,
         json_body: Any = None,
         form_data: dict[str, str] | None = None,
+        files: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
         timeout: float = DEFAULT_TIMEOUT,
         cache_errors: bool = False,
@@ -208,6 +209,8 @@ class HttpCache:
         cache_errors=False means non-2xx responses are NOT written to disk,
         so a transient 429/500 does not get baked in permanently.
         form_data: if set, sent as application/x-www-form-urlencoded (imgbb).
+        files: if set, sent as multipart/form-data (SerpApi POST /image).
+        Cache keys use file-content hashes, never the bytes themselves.
         """
         body: bytes | None
         if json_body is not None:
@@ -218,6 +221,17 @@ class HttpCache:
                 {k: hashlib.sha256(v.encode()).hexdigest() for k, v in sorted(form_data.items())},
                 sort_keys=True,
             ).encode()
+        elif files is not None:
+            # stable key over file CONTENT hashes — the same crop always hits
+            # the same cache entry; the bytes are never written to the key.
+            parts = {}
+            for name in sorted(files):
+                v = files[name]
+                content = v[1] if isinstance(v, tuple) else v
+                if isinstance(content, str):
+                    content = content.encode()
+                parts[name] = hashlib.sha256(content).hexdigest()
+            body = json.dumps(parts, sort_keys=True).encode()
         else:
             body = None
         key = cache_key(method, url, params, body)
@@ -235,6 +249,7 @@ class HttpCache:
             params=params,
             json=json_body if json_body is not None else None,
             data=form_data if form_data is not None else None,
+            files=files,
             headers=headers,
             timeout=timeout,
         )

@@ -1,117 +1,126 @@
-"""Temporary public image hosting for Lens/SerpApi (F1a).
+"""SerpApi image upload for the Lens escalation path (F1a, revised 7 Sep 2026).
 
-SerpApi Google Lens requires a publicly reachable image URL; GCV accepts raw
-base64.  When SEARCH_PUBLIC_UPLOAD=1 and IMGBB_KEY is set this module posts the
-probe image to imgbb.com with a 5-minute expiry, returning the hosted URL.
+Discovered in the hhgoa-provenance (TRACE) review: SerpApi documents a direct
+upload endpoint — POST https://serpapi.com/image → {"image_id": ...} — which
+google_lens accepts as `image_id=` instead of `url=`. That removes the imgbb
+hop entirely: the crop is held by SerpApi for ~10 minutes, never placed on a
+public image host, and needs no extra API key beyond SERPAPI_KEY.
+
+Documented limits (serpapi.com/image-api): JPG/PNG/WebP, 500 KB max.
+Our escalation query is always the 512px head crop (well under the cap).
 
 Design constraints
 ------------------
-- is_head_crop is keyword-only and is structurally enforced (raises TypeError if
-  omitted, ValueError if False) — not left to a comment (spec §F1a).
-- Privacy: expiration=300 (5 min). The hosted image is never linked, discovered
-  only via unguessable random URL, and expires before a human could act on it.
-- Quota: imgbb free tier = 32 MB per image, unlimited images.
-  HTTP_CACHE wraps the POST so repeated calls in tests are free (R-04).
-- Exceptions: UploaderDisabled if key or upload flag is missing;
-  UploaderError for network / API failures.
+- is_head_crop is keyword-only and structurally enforced (TypeError if
+  omitted, ValueError if False) — the escalation query must be the isolated
+  head, never the full photo (garment-hijack guard, T2.5).
+- SEARCH_LENS_UPLOAD=1 is required: sending the face crop to SerpApi is a
+  disclosure the user must opt into.
+- Goes through HttpCache (R-04) so repeat runs reuse the upload.
+- UploadForSearchDisabled if flag off; UploadError on network/API failure.
 """
 
 from __future__ import annotations
 
-import base64
-
 from pipeline.cache.http_cache import HttpCache, get_http_cache
 from pipeline.config import get_config
 
-IMGBB_UPLOAD_URL = "https://api.imgbb.com/1/upload"
-_EXPIRATION_SECONDS = 300  # 5 minutes — short-lived, see D-31 analog
+SERPAPI_UPLOAD_URL = "https://serpapi.com/image"
+MAX_UPLOAD_BYTES = 500 * 1024  # documented SerpApi limit
+SUPPORTED_FORMATS = ("jpg", "jpeg", "png", "webp")
 
 
-class UploaderDisabled(Exception):
-    """Raised when upload is attempted but SEARCH_PUBLIC_UPLOAD=0 or IMGBB_KEY unset."""
+class UploadForSearchDisabled(Exception):
+    """Raised when the upload is attempted but SEARCH_LENS_UPLOAD=0."""
 
 
-class UploaderError(Exception):
-    """Raised on network or imgbb API failure."""
+class UploadError(Exception):
+    """Raised on network or SerpApi upload failure."""
 
 
-def upload_for_search(
+def upload_crop_to_serpapi(
     jpeg_bytes: bytes,
     http: HttpCache | None = None,
     *,
     is_head_crop: bool,
 ) -> str:
-    """Upload *jpeg_bytes* to imgbb and return the hosted URL.
+    """Uploads *jpeg_bytes* to SerpApi and returns the image_id for
+    engine=google_lens.
 
     Parameters
     ----------
     jpeg_bytes:
-        Raw JPEG bytes of the image to host. Must be the face/head crop —
-        never the full probe image — so that the public URL reveals no
-        context the subject has not already published.
+        Raw JPEG bytes of the head crop — never the full probe photo.
     http:
-        HttpCache instance. Defaults to the shared cache so repeated calls in
-        tests use the cached response (R-04).
+        HttpCache instance. Defaults to the shared cache so repeated calls
+        in tests reuse the cached response (R-04).
     is_head_crop:
         Keyword-only. **Must be True.** Structural guard ensuring callers
-        have explicitly confirmed they are uploading a crop, not the original.
+        have explicitly confirmed they are uploading the isolated head crop.
         Raises ValueError if False.
 
     Returns
     -------
     str
-        The public, time-limited URL of the uploaded image.
+        The image_id to pass to google_lens as `image_id=`.
 
     Raises
     ------
     TypeError
         If is_head_crop is omitted (keyword-only enforcement by Python).
     ValueError
-        If is_head_crop is False — caller must explicitly acknowledge crop.
-    UploaderDisabled
-        If SEARCH_PUBLIC_UPLOAD != 1 or IMGBB_KEY is not configured.
-    UploaderError
-        On network / API failure.
+        If is_head_crop is False, or the bytes exceed the documented
+        500 KB upload limit.
+    UploadForSearchDisabled
+        If SEARCH_LENS_UPLOAD != 1.
+    UploadError
+        On network / API failure or an unexpected response shape.
     """
     if not is_head_crop:
         raise ValueError(
-            "upload_for_search: is_head_crop must be True. "
-            "Only upload the face/head crop, never the full probe image."
+            "upload_crop_to_serpapi: is_head_crop must be True. "
+            "Only upload the head crop, never the full probe photo."
+        )
+    if len(jpeg_bytes) > MAX_UPLOAD_BYTES:
+        raise ValueError(
+            f"head crop is {len(jpeg_bytes)} bytes; SerpApi's upload limit "
+            f"is {MAX_UPLOAD_BYTES} bytes"
         )
 
     cfg = get_config()
-    if not bool(getattr(cfg, "search_public_upload", 0)):
-        raise UploaderDisabled(
-            "SEARCH_PUBLIC_UPLOAD is not enabled. "
-            "Set SEARCH_PUBLIC_UPLOAD=1 in .env to allow temporary public hosting."
+    if not bool(getattr(cfg, "search_lens_upload", 0)):
+        raise UploadForSearchDisabled(
+            "SEARCH_LENS_UPLOAD is not enabled. "
+            "Set SEARCH_LENS_UPLOAD=1 in .env to allow uploading the head "
+            "crop to SerpApi for the Lens escalation."
         )
-
-    key = getattr(cfg, "imgbb_key", None)
+    key = getattr(cfg, "serpapi_key", None)
     if not key:
-        raise UploaderDisabled(
-            "IMGBB_KEY is not configured. "
-            "Add IMGBB_KEY=<your-key> to .env to enable public upload."
+        raise UploadForSearchDisabled(
+            "SERPAPI_KEY is not configured — the Lens escalation cannot run."
         )
 
     if http is None:
         http = get_http_cache()
 
-    b64 = base64.b64encode(jpeg_bytes).decode("ascii")
     try:
         resp = http.post(
-            IMGBB_UPLOAD_URL,
-            params={"key": key, "expiration": str(_EXPIRATION_SECONDS)},
-            form_data={"image": b64},
+            SERPAPI_UPLOAD_URL,
+            params={"api_key": key},  # R-10: redacted before any disk write
+            files={"image": ("head_crop.jpg", jpeg_bytes, "image/jpeg")},
             timeout=30.0,
         )
         resp.raise_for_status()
     except Exception as exc:
-        raise UploaderError(f"imgbb upload failed: {exc}") from exc
+        raise UploadError(f"SerpApi image upload failed: {exc}") from exc
 
-    data = resp.json()
-    url = (data.get("data") or {}).get("url")
-    if not url:
-        raise UploaderError(
-            f"imgbb returned unexpected response shape: {list(data.keys())}"
+    try:
+        data = resp.json()
+    except Exception as exc:
+        raise UploadError(f"SerpApi upload returned non-JSON: {exc}") from exc
+    image_id = data.get("image_id") if isinstance(data, dict) else None
+    if not image_id:
+        raise UploadError(
+            f"SerpApi upload returned unexpected response shape: {list(data) if isinstance(data, dict) else type(data)}"
         )
-    return url
+    return str(image_id)
