@@ -61,7 +61,7 @@ Target by end of day: a live webcam capture finds a real Bluesky post and prints
 - [x] `verify/dedupe.py` — URL normalisation then phash, Hamming ≤ 6
 - [x] `verify/allowlist.py` — registrable-domain comparison, not substring
 - [x] `audit/run_log.py` — the `audit.json` writer
-- [ ] `cache/http_cache.py` — R-04 caching layer — **not built yet**, not exercised because Bluesky needed no paid quota to protect. Needed before Phase 5 (SerpApi).
+- [x] `cache/http_cache.py` — R-04 caching layer. **Built** (was flagged not-yet-built in the original Phase 2 plan); every outbound call goes through it, and F1a-rev extended it with multipart `files=` support for the SerpApi direct upload.
 - [x] Temporary `calibration/threshold.json` placeholder — actually implemented as `config.load_match_policy()` returning an in-code placeholder (`is_placeholder=True`) rather than a committed JSON file. Equivalent effect, different mechanism than originally planned.
 
 **Exit criterion:** met via the demo UI's live run (see Phase 4a) rather than a standalone synthetic test — a real Bluesky search produced a complete `audit.json` with every candidate scored and a rejection reason. The synthetic fake-provider unit test described here was not separately written; consider adding it before Phase 5 if regression coverage on the matcher is wanted.
@@ -471,7 +471,7 @@ Supersedes the original Phase 5/6 ordering. Rationale in `memory.md` D-21..D-24 
 Nothing else in the project satisfies "search the web". If this does not work, the submission does not meet the brief.
 
 - [ ] `cache/http_cache.py` **first** — R-04. Must exist before any live SerpApi call, or debugging will burn the ~100/mo quota. Key on (url, sorted params), store response bodies under `.cache/`, honour `HTTP_CACHE=0`.
-- [ ] **Resolve the last open unknown (A-03):** how to submit a *local* probe image to SerpApi. It needs a publicly reachable URL. Options: temporary upload host, or a SerpApi file-upload path if one exists. **Settle this before writing the provider** — it gates the whole phase.
+- [x] **Resolve the last open unknown (A-03):** how to submit a *local* probe image to SerpApi. **Resolved 7 Sep 2026 (F1a-rev):** SerpApi documents a direct upload endpoint — `POST https://serpapi.com/image` → `{"image_id": ...}` — accepted by `engine=google_lens` as `image_id=` (verified live; limits at `serpapi.com/image-api`, 500 KB max). No public image host involved. The interim imgbb hop (`SEARCH_PUBLIC_UPLOAD` + `IMGBB_KEY`) is retired — see `memory.md` §3z2 F1a-rev.
 - [ ] `search/web_detect.py` with a `serpapi` backend per `design.md` §2.1a. Parse `visual_matches[]` + `organic_results[]` into `Candidate`. Record `related_content[].query` as the identity signal, context only (R-03).
 - [ ] Persist every raw response to `runs/<id>/raw/` — unedited third-party JSON is the anti-fabrication evidence
 - [ ] Remove dead config: `bluesky_seed_handles`
@@ -565,7 +565,7 @@ Now our **only** open-web provider after D-17 removed the commercial face-search
 
 - [x] SerpApi account, key into `.env` — **done by owner 5 Sep 2026**, key present. Not yet used by any code.
 - [ ] **Resolve A-07 FIRST, before writing the provider:** do Lens results for a public figure actually include social-media pages that survive the domain allowlist? Spend one manual query on this. If Lens returns only news and stock photography, reconsider the approach before spending 3 hours on it.
-- [ ] **Resolve A-03:** can SerpApi take uploaded bytes, or is a public image URL required? (`design.md` §2.3)
+- [x] **Resolve A-03:** can SerpApi take uploaded bytes, or is a public image URL required? (`design.md` §2.3) — **yes, uploaded bytes: `POST /image` → `image_id` (F1a-rev, 7 Sep 2026; verified live). The head crop is held by SerpApi ~10 min, never a public host. Gated by `SEARCH_LENS_UPLOAD=1`.
 - [ ] `search/google_lens.py` — parse `visual_matches[]` → `Candidate`
 - [ ] R-04 caching **wired before the first live call**, not after
 - [ ] Write raw responses to `runs/<id>/raw/google_lens.json`

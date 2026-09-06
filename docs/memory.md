@@ -1484,3 +1484,36 @@ UI updated: distinct `tr.conjecture-claim` CSS row (violet `rgba(139,92,246,0.07
 `tr.linked-claim` CSS added: amber `rgba(210,153,34,0.08)`.
 
 All 290 tests passing (was 252 at start of session). pyflakes clean.
+
+---
+
+## 3z3. Current state — what remains (supersedes §3v)
+
+7 Sep 2026, after the F1a-rev session.
+
+**Done since §3v:** §3w (source-level competitor review) and its fixes —
+Tier 2 executed end-to-end (T2.1 artifact re-verification, T2.2 three tamper
+modes, T2.3 XSS hardening, T2.4 Evidence Explorer, T2.5 head-crop query
+representation, T2.6 profile expansion with strict face gating, T2.7 CLI
+subcommands + structured exit codes, T2.8 Base Sepolia documentation);
+§3z1 LinkedIn SERP retrieval; §3z2 F1/F1b/F2/F3 hardening pass; and
+**F1a-rev** — the Lens escalation no longer hosts the head crop on a public
+image host (imgbb + `IMGBB_KEY` + `SEARCH_PUBLIC_UPLOAD` removed; the crop
+uploads directly to SerpApi `POST /image` → `image_id`, gated by
+`SEARCH_LENS_UPLOAD=1`). All five doc layers reconciled with the code.
+Full suite **294 passing**, pyflakes clean, pushed to GitHub
+(`AyushX1602/goatask3` master, commit `58d8d57`).
+
+**Remaining:**
+
+1. **G6 recording** — unchanged from §3v: needs a consenting human subject,
+   a camera, and someone pressing record. Nothing further can be prepared
+   without one of those three.
+2. **F1a-rev live acceptance run** — one escalation probe with real keys:
+   `SERPAPI_KEY` set, `SEARCH_LENS_UPLOAD=1 HTTP_CACHE=0`, local upload
+   driving a real `POST /image` + Lens call. Unit-tested end-to-end with
+   fakes; the live pass is outstanding. R-13 applies: a recorded negative
+   result (upload fails → skip reason → GCV results intact) is a valid
+   outcome to show, not a failure to hide.
+3. Deprioritised, unchanged: the stale-image re-fetch verifier check
+   (optional), G5 calibration (skipped per D-29).
