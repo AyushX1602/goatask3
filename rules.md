@@ -263,9 +263,20 @@ Any candidate discovered by expanding outward from an already-verified page
 (handle propagation, outbound page links, link-in-bio hops, platform profile
 guesses) re-enters the normal pipeline: fetch, detect, align, embed, score
 against the probe, threshold, margin. Candidates that cannot be face-scored —
-because the platform blocks media, or no image is resolvable — may be
-recorded as a `linked` claim with an explicit label, and must never be
-counted as a match, ranked among matches, or shown with a score.
+because the platform blocks media, or no image is resolvable — are classified
+into one of two unscored tiers:
+
+- `linked` — an explicit claim published on a verified page (outbound social
+  link, link-in-bio reference, SERP-recovered profile). The page itself is
+  already verified. Decision: `linked-claim`.
+- `conjecture` — a same-handle structural guess from `derive_profile_urls()`
+  (e.g. if the verified handle is `alice`, also try `x.com/alice`). This is a
+  reasonable heuristic but NOT a published claim — the same handle may belong
+  to a different person on another platform. Decision: `conjecture-claim`.
+
+Both tiers are recorded, never silently dropped, never counted as a match, never
+ranked among matches, and never shown with a score. They are displayed with
+distinct visual styling in the UI (amber for `linked`, violet for `conjecture`).
 
 *Why:* this is the boundary that separates legitimate cross-platform
 expansion from the name-search pivot rejected earlier (see `memory.md` D-45).

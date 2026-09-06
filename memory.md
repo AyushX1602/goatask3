@@ -1429,4 +1429,47 @@ Executed 6 Sep 2026. Live acceptance executed with `HTTP_CACHE=0` on subject wit
 - Canonical URL normalization strictly enforced (`https://www.linkedin.com/in/{slug}`). Non-profile URLs (`/jobs/`, `/company/`, `/school/`, `/pub/dir/`, `/posts/`) strictly discarded.
 - All 19 tests in `tests/test_serp_resolve.py` and `tests/test_expand.py` pass cleanly.
 
+---
 
+## §3z2. F1a / F1b / F2 / F3 Hardening Pass — 6 Sep 2026
+
+### F2 — GENERIC_ENTITIES fix
+`GENERIC_ENTITIES` was missing `"hair"` and `"eyebrow"` — spec requires 11 terms (§3w). Now complete:
+`{"human","person","face","photograph","portrait","chin","forehead","head","smile","hair","eyebrow"}`.
+All 11 required terms present; test 10 in `test_backend_escalation.py` verifies this with `required.issubset(GENERIC_ENTITIES)`.
+
+### F1b — Auto backend ordering
+`_resolve_backend("auto")`:
+- `SEARCH_PUBLIC_UPLOAD=1` → `["serpapi", "gcv"]` (Lens benefits from public URL)
+- `SEARCH_PUBLIC_UPLOAD=0` (default) → `["gcv", "serpapi"]` (GCV accepts raw bytes, ~10x larger quota, D-28)
+Test 9 in `test_backend_escalation.py` verifies both orderings.
+
+### F1a — Temporary public image hosting
+`pipeline/search/uploader.py`: `upload_for_search(jpeg_bytes, http, *, is_head_crop)`.
+- `is_head_crop` structurally enforced keyword-only: `TypeError` if omitted, `ValueError` if `False`.
+- `UploaderDisabled` if `SEARCH_PUBLIC_UPLOAD=0` or `IMGBB_KEY` unset.
+- imgbb.com API with `expiration=300` (5 min). Key passed in `params` (not body); image as base64 in `form_data`.
+- `HttpCache.request()` extended with `form_data` parameter; cache key uses SHA-256 of field values.
+- 7/7 unit tests passing in `tests/test_uploader.py`.
+- **Acceptance run not yet executed** — requires `IMGBB_KEY` + `HTTP_CACHE=0 SEARCH_PUBLIC_UPLOAD=1`.
+  R-13: "a recorded negative result is a valid outcome."
+
+### F2b — NO_CANDIDATES vs NO_MATCH audit
+Verified 6 Sep 2026 by direct code inspection and Python invocation:
+- `score_candidates(scored=[], ...)` → `NO_CANDIDATES` ✅ (nothing was examined)
+- `score_candidates(scored=[(conjecture_cand, None, 0)], ...)` → `NO_MATCH` ✅ (something was examined, nothing matched)
+Path is correct — conjecture/linked candidates are in the `scored` argument so the `not (prerejected or scored)` guard at line 97 of `matcher.py` does NOT trigger `NO_CANDIDATES` when only unscored claims are present.
+
+### F3 — Four evidence tiers
+Origin taxonomy extended to three values (documented in `Candidate.origin` field, `base.py`, and R-28):
+- `face` — biometrically verifiable (has `image_url`, ArcFace cosine)
+- `linked` — explicit claim on a verified page (outbound link / SERP-recovered) → `linked-claim` decision
+- `conjecture` — same-handle structural guess (`derive_profile_urls()`) → `conjecture-claim` decision
+
+`_add_expanded_candidate()` in `expand.py` now emits `origin="conjecture"` for all non-GitHub platform guesses (X, Instagram, YouTube). Only GitHub avatar keeps `origin="face"` (has a publicly fetchable image_url).
+
+Matcher updated: `origin="conjecture"` → `conjecture-claim` (unscored, excluded from match counts).
+UI updated: distinct `tr.conjecture-claim` CSS row (violet `rgba(139,92,246,0.07)`), distinct label "same-handle guess (unverified)", priority 3 in `decisionRank` (after linked-claim).
+`tr.linked-claim` CSS added: amber `rgba(210,153,34,0.08)`.
+
+All 290 tests passing (was 252 at start of session). pyflakes clean.
