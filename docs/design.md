@@ -188,6 +188,34 @@ Applied in two places, using the same function:
 
 No blur gate: measured as unnecessary (cosine still 0.904 under heavy blur).
 
+### 1.8 Head crop as a search query — `face/headcrop.py`  ·  built, disabled by default (R-27)
+
+Distinct from everything above: this crop is never an input to `embed()`.
+It exists purely as an alternate **search query representation**, built
+after a competitor measured a probe in distinctive clothing returning
+almost entirely garment listings (the reverse-image engine locked onto the
+outfit, not the face).
+
+```python
+def create_head_crop(bgr: np.ndarray, face: DetectedFace,
+                      target_size: int = 512) -> np.ndarray
+```
+
+- Bounding box grown asymmetrically: 55% up, 30% side, 18% down. Growing
+  downward mostly adds collar and shoulders — exactly the clothing this
+  exists to exclude.
+- Padded to square, soft elliptical mask, composited onto neutral mid-grey
+  `(128,128,128)` — deliberately not white, since a white background biases
+  reverse-image engines toward catalogue/stock imagery.
+
+Per R-27, a new search representation ships only if measured to beat the
+current one on our own fixtures. `use_head_crop` therefore defaults to
+`False` in `search/image_prep.py::prepare_search_image()` until
+`scripts/probe_query_representation.py` has been run against real fixtures
+and the result — win or lose — is recorded in `memory.md`. As of this
+writing that measurement has not yet been executed; do not assume the flag
+should be flipped without running it.
+
 ---
 
 ## 2. Search layer
@@ -207,15 +235,29 @@ def gather(aligned_png: bytes, probe: Embedding,
 
 ### 2.1a Web detection provider — `search/web_detect.py`  ·  **PRIMARY**
 
+**Revised 7 Sep 2026.** Everything marked **[A]** below is now resolved and
+live, not assumed — this section previously described SerpApi as the sole
+proven-live backend with GCV as an unexercised assumption, which was true in
+early September but is no longer the state of the code.
+
 One call reaches every platform Google has indexed. This replaces the
 per-platform integration layer entirely (`architecture.md` §5, "Rejected").
 
-Two interchangeable backends behind one provider:
+Two interchangeable backends behind one provider, both **[V] proven live**:
 
-| Backend | Endpoint | Free tier | Status |
+| Backend | Endpoint | Free tier | Needs a public URL? |
 |---|---|---|---|
-| `serpapi` | `serpapi.com/search?engine=google_lens&url=<img>` | ~100/mo | **[V] proven live** |
-| `gcv` | `vision.googleapis.com/v1/images:annotate`, feature `WEB_DETECTION` | 1,000/mo | **[A]** schema known from docs, not yet exercised |
+| `gcv` (default first) | `vision.googleapis.com/v1/images:annotate`, feature `WEB_DETECTION` | ~1,000/mo | No — accepts raw base64 |
+| `serpapi` | `serpapi.com/search?engine=google_lens&url=<img>` | ~100/mo | Yes — see `uploader.py`, §2.1c |
+
+**Backend selection is no longer "pick one and commit."** `_resolve_backend()`
+returns an *ordered list*; `search()` tries the first, and — only if the
+result carries no real identity signal (§2.1b) — escalates to the second and
+merges. This replaced a real, measured defect: two live runs
+(`runs/2026-09-05T22-52-19Z`, `runs/2026-09-05T22-53-02Z`) showed GCV
+returning 20/20 candidates that were all `visuallySimilarImages` lookalikes
+on unrelated university faculty pages, with SerpApi Lens never running at
+all because the two backends were mutually exclusive at construction time.
 
 **[V] Verified SerpApi response shape** (`scripts/probe_lens.py`, cached to
 `.cache/lens_probe/`). Measured on one real face photo:
@@ -231,23 +273,77 @@ Fields we consume:
 | Field | Use |
 |---|---|
 | `visual_matches[].link` | `Candidate.page_url` |
-| `visual_matches[].thumbnail` / `.image` | `Candidate.image_url` — what we download and verify |
+| `visual_matches[].image` (preferred) / `.thumbnail` (fallback) | `Candidate.image_url` — the full-resolution field is preferred over the thumbnail because small thumbnails routinely fail the 50px face-quality gate; which field won is recorded in `raw["image_field_used"]` |
 | `visual_matches[].title` | audit log context, and a secondary identity signal |
 | `organic_results[].link` / `.title` | additional candidates |
 | `related_content[].query` | recorded as the identity signal Google inferred. **Context only — never used in the accept decision** (R-03) |
 
-GCV backend maps to the same `Candidate` shape from `webDetection.pagesWithMatchingImages`, `.fullMatchingImages`, `.partialMatchingImages`, `.visuallySimilarImages`, with `webEntities[].description` as the identity signal.
+GCV backend maps to the same `Candidate` shape from `webDetection.pagesWithMatchingImages`, `.fullMatchingImages`, `.partialMatchingImages`, `.visuallySimilarImages`, with `webEntities[].description` as the identity signal, and `match_kind` set to `"full"`/`"partial"`/`"similar"`/`"page"` accordingly (see `search/base.py`'s `Candidate.match_kind`).
 
-**Known gotchas.**
-- SerpApi requires a publicly reachable image URL, so an uploaded probe must be hosted or passed via the file-upload endpoint. **[A] resolve before implementing** — this is the last significant unknown.
-- GCV `WEB_DETECTION` sometimes returns only `webEntities`/`bestGuessLabels` with the image-URL arrays absent. Handle empty arrays as a valid zero-candidate result, never as an error.
+**Known gotchas, resolved and current.**
+- GCV `WEB_DETECTION` sometimes returns only `webEntities`/`bestGuessLabels` with the image-URL arrays absent. Handled as a valid zero-candidate result, never as an error.
 - Roughly 16% of returned links were on social domains in the one measured sample. Expect most candidates to be rejected by the allowlist — that is normal and must be visible in the audit log, not hidden.
+- GCV alone can return real candidates that carry no genuine identity signal at all (see §2.1b) — this is the case escalation exists to catch.
 
-**Evidence-integrity note.** We verify the face against the thumbnail the
-search engine served, not the live image on the platform. The evidence bundle
-therefore records the exact `image_url` fetched, its `sha256`, and the fact
-that verification was performed against a search-engine-cached copy. This is
-a real limitation and is disclosed in the README rather than papered over.
+**Evidence-integrity note.** We verify the face against the bytes served at
+fetch time, not necessarily the live image on the platform. The evidence
+bundle records the exact `image_url` fetched, its `sha256` and `phash`, and
+`match.verified_against` (`"platform_origin"` | `"search_engine_cache"` |
+`"platform_api"` | `"platform_embed"` | `"unknown"`), derived from the
+fetched URL's host rather than trusted as a caller-supplied default (R-24).
+This is a real, disclosed limitation, not papered over.
+
+### 2.1b Quality-triggered backend escalation
+
+```python
+GENERIC_ENTITIES = frozenset({
+    "human", "person", "face", "photograph", "portrait",
+    "chin", "forehead", "head", "smile", "hair", "eyebrow",
+})
+
+def result_carries_identity_signal(
+    candidates: list[Candidate], identity_signals: list[str],
+) -> bool:
+    """True iff EITHER: a candidate on an allowlisted domain has
+    match_kind in {"full","partial"}; OR a candidate on an allowlisted
+    domain has a retrievable image_url with content_kind in {post,profile};
+    OR at least one identity_signal (case-insensitive) is not in
+    GENERIC_ENTITIES and has length >= 3."""
+```
+
+Deliberately **never** triggers on candidate count — that specific bug was
+already fixed once before (see `memory.md` §3d), because 20 useless
+candidates can look exactly like success to a count-based check. The escalation
+decision is entirely about whether the provider actually claimed to
+recognise something, not how many things it returned.
+
+Backend ordering in `auto` mode depends on `SEARCH_PUBLIC_UPLOAD` (§2.1c):
+`["gcv", "serpapi"]` when it's off (the default — GCV's larger quota wins the
+tie, D-28), `["serpapi", "gcv"]` when it's on (Lens becomes reachable and
+often answers a more specific question than GCV's visual-similarity fallback).
+
+### 2.1c Public image hosting for Lens — `search/uploader.py`  ·  **off by default**
+
+SerpApi's `google_lens` engine has no bytes-upload path (confirmed against
+SerpApi's own documentation) — it needs a publicly reachable URL. This module
+is the narrowest possible version of that requirement:
+
+```python
+def upload_for_search(
+    jpeg_bytes: bytes, http: HttpCache | None = None, *, is_head_crop: bool,
+) -> str:
+    """Uploads jpeg_bytes to imgbb with a 5-minute expiry and returns the
+    hosted URL. is_head_crop is keyword-only and STRUCTURALLY enforced:
+    raises ValueError if False. Uploading the original probe photo through
+    this function is a hard error, not a comment someone can ignore."""
+```
+
+Gated by `SEARCH_PUBLIC_UPLOAD` (default `0`) and `IMGBB_KEY`. A fresh clone
+with no `.env` changes never uploads anything. Only `headcrop.py`'s output —
+the background-removed head crop, never the full photograph — may be passed
+in. This is a real, disclosed trade-off: turning it on does publish a masked
+head crop to a third-party host for a few minutes, and the README states
+that plainly rather than treating it as a footnote.
 
 ### 2.2 Bluesky provider — `search/bluesky.py`  ·  **KEYLESS FALLBACK ONLY**
 
@@ -320,7 +416,7 @@ A match only counts if it sits on a public social platform. Also an ethics contr
 SOCIAL_ALLOW = {
     "bsky.app", "mastodon.social", "x.com", "twitter.com",
     "instagram.com", "facebook.com", "linkedin.com",
-    "reddit.com", "youtube.com", "tiktok.com", "threads.net",
+    "reddit.com", "youtube.com", "tiktok.com", "threads.net", "github.com",
 }
 DENY = {  # never surfaced, regardless of match score
     # dating platforms, mugshot aggregators, adult platforms
@@ -328,6 +424,40 @@ DENY = {  # never surfaced, regardless of match score
 ```
 
 Registrable-domain comparison, not substring matching, so `evil-x.com.attacker.net` cannot pass. Off-allowlist candidates are still scored and logged — they simply cannot become the reported match. Showing them scored-then-excluded strengthens the audit trail.
+
+Deliberately includes CDN hosts alongside platform www domains
+(`pbs.twimg.com`, `licdn.com`, `preview.redd.it`) — excluding them was
+measured to discard the highest-scoring verifiable evidence in real runs
+(D-36). `content_kind()` in the same module classifies a matched URL as
+`"post"` | `"profile"` | `"unknown"`, reporting-only per R-03.
+
+### 2.6 Profile expansion — `search/expand.py`, `search/serp_resolve.py`  ·  **F3, added 7 Sep 2026**
+
+Runs only after `matcher.py` has already accepted a MATCH — expansion never
+gates or influences the accept decision, it only runs after one has already
+been made. From the accepted candidate(s), it discovers further candidates
+by three routes, each producing a distinct, honestly-labelled origin:
+
+| origin | route | re-scored? | decision if unscored |
+|---|---|---|---|
+| `face` | outbound link / SERP result WITH a retrievable image | yes — re-enters `matcher.py` exactly like any primary candidate (R-28) | n/a — it is scored |
+| `linked` | an explicit claim published on the already-verified page, or a SERP-recovered profile with no thumbnail | no | `linked-claim` |
+| `conjecture` | a same-handle structural guess (`derive_profile_urls()` — "if the verified handle is `alice`, also try `x.com/alice`") | no | `conjecture-claim` |
+
+`linked` and `conjecture` are deliberately different tiers, not one merged
+"unscored" bucket: a `linked` claim was actually published by the verified
+party, while `conjecture` is a coincidence-until-proven guess about a
+same-named account elsewhere. Neither is ever counted as a match or shown
+with a score (R-28).
+
+LinkedIn and Instagram specifically go through `serp_resolve.py` rather than
+being fetched directly, since both platforms block programmatic access to
+their own pages (`linkedin.com/in/...` returns HTTP 999; Instagram's public
+HTML is a login shell). `serp_resolve.py` runs a targeted Google search
+(`site:linkedin.com/in "{handle}"`) via SerpApi and reads the profile photo
+straight from Google's own SERP `thumbnail` field when one is present —
+never requesting the blocked platform itself. Capped at
+`EXPAND_SERP_MAX_CALLS` (default 1) per run to protect quota.
 
 ---
 
@@ -364,9 +494,9 @@ best.score - runner_up.score >= MATCH_MARGIN        # runner_up = highest scorin
 
 The margin rule is what kills lookalike false positives, and it is easy to narrate on camera. Runner-up must come from a different `page_url`, otherwise multiple images of the true subject on one page would suppress a correct match.
 
-Rejection reasons, all logged verbatim:
+Rejection reasons, all logged verbatim (extended 7 Sep 2026 with `reject-unsafe-url` and the two expansion decision states, which are not rejections but are reported the same way — never silently dropped):
 
-| Reason | Meaning |
+| Reason / decision | Meaning |
 |---|---|
 | `reject-no-face` | no face detected in the candidate image |
 | `reject-face-too-small` | face below `MIN_FACE_PX`; embedding would be unreliable (§1.7) |
@@ -375,6 +505,9 @@ Rejection reasons, all logged verbatim:
 | `reject-domain` | not on the social allowlist |
 | `reject-duplicate` | collapsed by phash |
 | `reject-fetch-failed` | image could not be downloaded |
+| `reject-unsafe-url` | URL failed SSRF validation before any fetch was attempted — non-https scheme, internal/private/loopback address, unresolvable host, size cap exceeded, or magic-bytes mismatch (R-29) |
+| `linked-claim` | not a rejection — an `origin="linked"` expansion candidate, unscored by design, never counted as a match (R-28) |
+| `conjecture-claim` | not a rejection — an `origin="conjecture"` expansion candidate, unscored and weaker than `linked-claim` (R-28) |
 
 **Score-band semantics**, from the §2a measurements. These are presentation
 rules, not extra thresholds — the accept decision remains threshold + margin.
@@ -388,14 +521,36 @@ rules, not extra thresholds — the accept decision remains threshold + margin.
 
 When a candidate image contains several faces, score all of them and keep the maximum.
 
-### 3.2 Calibration — `verify/calibrate.py`
+### 3.2 Calibration — current state, corrected 7 Sep 2026
 
-Thresholds are **derived, never hardcoded** (R-09).
+**This section previously described a benchmark-scale ROC calibration
+(`verify/calibrate.py`, ~100/~100 pairs, a committed `roc.png`) as though it
+were built. It is not.** `verify/calibrate.py` does not exist as a module in
+the current tree, and no ROC sweep has been run. Documenting a process this
+confidently while the code doesn't do it is exactly the doc-vs-code defect
+category Tier 0 was created to remove — corrected here rather than left.
 
-1. Build `calibration/pairs/` — roughly 100 positive and 100 negative pairs from public face datasets or self-collected consented images.
-2. Sweep the threshold, compute TPR/FPR, write `roc.png`.
-3. Choose the operating point at a **declared** false-match rate (target: FMR ≤ 1%).
-4. Emit `calibration/threshold.json`:
+What is actually true, read from `pipeline/config.py::load_match_policy()`:
+
+- `calibration/threshold.json` **is** the source of truth when present, and
+  `MATCH_THRESHOLD`/`MATCH_MARGIN` are never a literal in pipeline code
+  (R-09 holds).
+- If that file does not exist, `load_match_policy()` returns a clearly
+  marked placeholder: `threshold=0.42, margin=0.08, model="w600k_r50",
+  target_fmr=0.01, is_placeholder=True`. The placeholder is not a guess —
+  it is a documented default set from real measurement
+  (`architecture.md` §2a: same-person cosine 0.7652, non-match ceiling
+  0.1385 across 41 live-harvested negatives), and it is honestly labelled
+  as provisional rather than presented as a benchmark result.
+- A full benchmark-scale calibration (positive/negative pairs, a swept ROC
+  curve, a declared target FMR) was evaluated and explicitly skipped — see
+  `memory.md` D-29 — as out of proportion for this task's scope, not
+  forgotten. `prd.md`'s known-limitations §10 item 6 discloses this
+  directly: "The similarity threshold is calibrated on a small labelled
+  pair set, not a benchmark-scale evaluation."
+
+If a full calibration pass is ever built, this is its target shape (kept as
+a forward design, not a claim about current code):
 
 ```json
 {
@@ -410,8 +565,6 @@ Thresholds are **derived, never hardcoded** (R-09).
   "calibrated_at": "2026-09-05T00:00:00Z"
 }
 ```
-
-Expect the threshold to land in 0.35–0.45 for this model. **Derive it anyway** — the committed ROC is the evidence, and the number alone is not.
 
 ---
 
@@ -435,21 +588,32 @@ def sha256_hex(data: bytes) -> str
 
 CI test (R-13): `canonical_bytes(json.loads(canonical_bytes(x))) == canonical_bytes(x)`.
 
-### 4.2 Bundle schema v2
+### 4.2 Bundle schema — now v3, updated 7 Sep 2026
 
-Bumped from v1 5 Sep 2026, before any sample run was committed under G3 — see
-`memory.md` §3j/§3k (D-39, D-40). Three additions, bundled into one bump
-deliberately rather than three separate ones: `post.content_kind`,
-`match.image_phash`, `match.verified_against`. The bump also closed a real
-defect: `match.image_sha256` was previously always `""` because no provider
-ever populated `post_meta["image_sha256"]`, and `chain/evm.py` silently
-zero-filled the resulting on-chain `imageHash`. `build_evidence()` now takes
-the actual scored image bytes as a required argument (no fallback) and
-computes both hashes from them directly.
+**v3** adds one thing on top of v2: an explicit `artifacts[]` manifest
+(§5.6), so `chain/reverify.py` can iterate a declared list of files-and-digests
+instead of hardcoding `match_image.jpg` by convention. This is what makes
+R-25 (re-verification recomputes every digest from disk, never reuses a
+stored one) mechanically possible — see `design.md` §5.4 and
+`architecture-deep-dive.md` §6 for the defect this closed.
+
+v2 (5 Sep 2026, retained below for history) added three fields in one bump:
+`post.content_kind`, `match.image_phash`, `match.verified_against`. That bump
+also closed a real defect: `match.image_sha256` was previously always `""`
+because no provider ever populated `post_meta["image_sha256"]`, and
+`chain/evm.py` silently zero-filled the resulting on-chain `imageHash`.
+`build_evidence()` now takes the actual scored image bytes as a required
+argument (no fallback) and computes both hashes from them directly.
+
+Current shape, read directly from `pipeline/evidence/bundle.py`
+(`SCHEMA_VERSION = 3`):
 
 ```jsonc
 {
-  "schema_version": 2,
+  "schema_version": 3,
+  "artifacts": [
+    {"path": "match_image.jpg", "sha256": "…", "phash": "aabbccdd11223344"}
+  ],
   "probe": {
     "face_commitment": "0x…",       // salted hash — NEVER the embedding (R-01)
     "liveness_passed": true,
@@ -458,47 +622,52 @@ computes both hashes from them directly.
     "aligned_sha256": "…"
   },
   "match": {
-    "page_url": "https://bsky.app/profile/…/post/…",
-    "image_url": "https://cdn.bsky.app/…",
+    "page_url": "https://x.com/…/status/…",
+    "image_url": "https://pbs.twimg.com/…",
     "image_sha256": "…",             // sha256 of the ACTUAL bytes scored — required, never empty
     "image_phash": "aabbccdd11223344", // 64-bit perceptual hash, 16 hex chars, same
                                         // imagehash/Hamming convention as verify/dedupe.py
-    "verified_against": "search_engine_cache", // | "platform_origin"
-    "provider": "bluesky",
-    "score_bps": 6842,               // 0.6842 cosine
+    "verified_against": "search_engine_cache", // | "platform_origin" | "platform_api"
+                                                // | "platform_embed" | "unknown"
+    "match_kind": "similar",         // provider's own image-identity claim, R-03 diagnostic only
+    "provider": "gcv_web_detection",
+    "score_bps": 9806,               // 0.9806 cosine
     "margin_bps": 3910,
     "threshold_bps": 4200
   },
   "post": {
-    "platform": "bluesky",
+    "platform": "x",
     "content_kind": "post",          // "post" | "profile" | "unknown" — never null.
                                       // See verify/allowlist.content_kind. Reporting only
                                       // (R-03): never affects the accept decision.
     "author_handle": "…",
     "author_display": "…",
-    "author_did": "…",
     "text": "…",
     "published_at": 1756900000,
-    "permalink": "https://bsky.app/…"
+    "permalink": "https://x.com/…",
+    "metadata_source": null          // "bluesky_appview" when the provider supplied post
+                                      // metadata; honestly null otherwise (GCV/SerpApi don't)
   },
   "run": {
-    "run_id": "2026-09-05T14-22-08Z",
-    "providers_queried": ["bluesky", "google_lens"],
-    "candidates_examined": 12,
-    "candidates_rejected": 11,
-    "corpus_size": 2000,
-    "corpus_crawled_at": 1757000000,
+    "run_id": "2026-09-05T18-07-40Z",
+    "providers_queried": ["gcv_web_detection"],
+    "candidates_examined": 21,
+    "candidates_rejected": 20,
+    "degraded_closed_corpus": false,
+    "identity_signals": ["Shah Rukh Khan"],  // context only, R-03
     "pipeline_version": "0.1.0",
     "model": "w600k_r50"
   }
 }
 ```
 
-A v1 bundle (without the three new fields) remains a valid, hashable
-structure forever — old evidence is never invalidated by a later schema
-version existing; only newly-built bundles use v2 (`tests/test_evidence_v2.py`
-pins both the v1 fixture's continued canonicalisation and the v2 fixture's
-round-trip).
+A v1 or v2 bundle (missing `artifacts[]`, or missing v2's three fields
+entirely) remains a valid, hashable structure forever — old evidence is
+never invalidated by a later schema version existing, and
+`extract_artifact_manifest()` falls back to the known `match_image.jpg`
+mapping when `artifacts[]` is absent, so both pre-v3 committed sample runs
+keep verifying without being regenerated (`tests/test_evidence_v2.py`,
+`tests/test_evidence.py` pin this).
 
 ### 4.3 Face commitment
 
@@ -514,16 +683,19 @@ The salt is generated once, stored in `.env` (never committed), and required to 
 
 ## 5. Chain layer
 
-### 5.1 Contract — `contracts/src/FaceEvidenceRegistry.sol`
+### 5.1 Contract — `contracts/src/EvidenceRegistry.sol`
 
-Full source in `ANALYSIS.md` §6.3. Summary:
+**Corrected 7 Sep 2026** — this section previously named the contract
+`FaceEvidenceRegistry.sol`; the file actually deployed and tested is
+`EvidenceRegistry.sol`. Full source in `docs/ANALYSIS.md` §6.3. Summary,
+read against the real contract:
 
 ```solidity
 struct Record {
-    bytes32 faceCommitment;  // salted hash, no biometric content
-    bytes32 imageHash;
+    bytes32 faceCommitment; // keccak256(salt || quantised embedding) — never the raw vector
+    bytes32 imageHash;      // sha256 of the matched candidate image bytes
     bytes32 postHash;
-    string  cid;
+    string  cid;             // written as "" — IPFS pinning was never built, §9
     uint32  scoreBps;
     uint64  anchoredAt;
     address submitter;
@@ -542,22 +714,22 @@ Foundry tests required before any deploy: anchor-then-verify round trip, double-
 ### 5.2 EVM client — `chain/evm.py`
 
 ```python
-def anchor(bundle: dict, cid: str | None) -> AnchorReceipt
-def read_record(evidence_hash: bytes) -> Record | None
+class EvmClient:
+    def anchor(self, bundle: EvidenceBundle) -> AnchorReceipt: ...
+    def verify(self, evidence_hash_hex: str) -> VerifyResult: ...
 ```
 
-`EVM_CHAIN` selects `anvil` (default) or `base-sepolia` (84532). Identical code path — that is the point (R-15). `AnchorReceipt` carries tx hash, chain id, block number, contract address, and gas used, and is written to `runs/<id>/anchor.json`.
+Receives **only hashes and the CID string** from the bundle — never the bundle's raw data dict, and never a face embedding (`architecture.md` §3 boundary rule; this is how R-01 is structural rather than a matter of discipline).
 
-### 5.3 OpenTimestamps — `chain/ots.py`
+`EVM_CHAIN` selects `anvil` (default, D-27/D-43) or `base-sepolia` (84532, opt-in bonus only). Identical code path — that is the point (R-15). Anvil's well-known default private key is used automatically when `EVM_CHAIN=anvil` and no `EVM_PRIVATE_KEY` is set — deliberately **not** read from `.env`, so it can never be mistaken for a real secret; any other chain must supply a real key or `EvmClient.__init__` raises. `AnchorReceipt` carries tx hash, chain id, block number, contract address, and gas used, and is written to `runs/<id>/anchor.json`.
 
-```python
-def stamp(path: Path) -> Path          # writes <path>.ots
-def verify_ots(path: Path) -> OtsResult   # PENDING | CONFIRMED(block, utc_time)
-```
+### 5.3 (removed — never built)
 
-**[V]** Free, no wallet, no API key; public calendar servers aggregate requests and pay Bitcoin fees. Batched, so a fresh stamp is `PENDING` for an hour or more.
-
-Demo consequence: stamp a bundle the **day before** the recording so a `CONFIRMED` proof exists on camera, and stamp the live one to show `PENDING` while explaining batching. Do not attempt to show a live confirmation.
+**Removed 7 Sep 2026.** This section previously described `chain/ots.py`
+(OpenTimestamps → Bitcoin) as a built module with a working `stamp()`/
+`verify_ots()` API. It was evaluated, deferred (§9 below), and never
+implemented — no such file exists in `pipeline/chain/`. The section is
+removed rather than left describing code that isn't there.
 
 ### 5.4 Verifier — `chain/reverify.py`
 
@@ -661,55 +833,93 @@ keep verifying without being regenerated or hand-edited.
 
 ## 6. Audit log
 
-`runs/<id>/audit.json`. This artifact is the answer to "prove it isn't hardcoded", so it is a first-class output.
+**Corrected 7 Sep 2026.** The shape below previously showed a
+`runs/<id>/raw/` directory of verbatim third-party JSON responses; no such
+directory is written by the current code. Raw provider payloads are folded
+into each candidate's `raw: dict` field inside `audit.json` itself
+(`search/base.py::Candidate.raw`) rather than as separate files — same
+anti-fabrication property (an unedited provider response is hard to
+fabricate), different storage shape.
+
+`runs/<id>/audit.json`. This artifact is the answer to "prove it isn't hardcoded", so it is a first-class output. Actual shape, read from `pipeline/audit/run_log.py::build_audit()`:
 
 ```jsonc
 {
-  "run_id": "…",
-  "started_at": 1757000000,
-  "probe": { "liveness": {...}, "det_score": 0.98, "bbox": [...] },
+  "run_id": "2026-09-05T18-07-40Z",
+  "started_at": 1757000000.0,
+  "liveness": { "passed": true, "score": null, "label": "not_applicable" },
   "providers": [
-    { "name": "bluesky", "available": true, "latency_ms": 8421,
-      "corpus_size": 2000, "corpus_crawled_at": 1757000000,
-      "candidates_returned": 8, "error": null },
-    { "name": "google_lens", "available": true, "latency_ms": 3120,
-      "http_status": 200, "cache_hit": false,
-      "candidates_returned": 14, "error": null,
-      "raw_response_path": "runs/…/raw/google_lens.json" }
+    { "name": "web_detect", "available": true, "attempted": true,
+      "latency_ms": 8.4, "candidates_returned": 20, "error": null }
   ],
   "candidates": [
-    { "rank": 0, "page_url": "…", "image_url": "…", "source": "bluesky",
-      "faces_found": 1, "score_bps": 6842, "decision": "ACCEPT", "reason": "…" },
-    { "rank": 1, "page_url": "…", "score_bps": 3112,
-      "decision": "reject-below-threshold", "reason": "…" }
+    { "rank": 0, "page_url": "…", "image_url": "…", "source": "gcv_web_detection",
+      "origin": "face", "faces_found": 1, "score": 0.9806,
+      "decision": "ACCEPT", "reason": "…", "match_kind": "similar",
+      "diagnostics": { "http_status": 200, "content_type": "image/jpeg",
+        "content_bytes": 41203, "image_width": 640, "image_height": 640,
+        "faces_found": 1, "largest_face_px": 512, "routes_tried": 1 } }
   ],
   "verdict": "MATCH",
-  "threshold_bps": 4200,
-  "margin_bps_required": 800
+  "threshold": 0.42,
+  "margin_required": 0.08,
+  "cache": { "web_detect": {"hits": 17, "misses": 8}, "aggregate": {"hits": 17, "misses": 8} },
+  "identity_signals": ["Shah Rukh Khan"],
+  "degraded_closed_corpus": false
 }
 ```
 
-Raw provider responses are written verbatim to `runs/<id>/raw/`. Unedited third-party JSON is hard to fabricate, which is exactly why it is committed.
+Every rejected candidate carries real measured `diagnostics` (HTTP status,
+content-type, byte count, image dimensions, faces found, largest face
+pixel size, routes tried) rather than a bare dash or a fabricated
+confidence number — a structurally-unscoreable row (e.g. a fetch that never
+returned bytes) is reported as exactly that, never invented (R-24).
 
 ---
 
 ## 7. CLI surface — `pipeline/cli.py`
 
+**Corrected 7 Sep 2026.** The command list below was aspirational —
+`scan`/`search`/`run-all`/`anchor`/`verify` did not exist as real
+subcommands when this section was first written, and `crawl`/`calibrate`
+were never built at all. T2.7 landed the real CLI; this now reflects the
+actual `typer` app.
+
 ```
-python -m pipeline scan      [--webcam | --image PATH] [--out DIR]
-python -m pipeline search    --probe DIR [--providers bluesky,google_lens]
-python -m pipeline anchor    --run DIR [--chain anvil|base-sepolia]
-python -m pipeline verify    --bundle PATH
-python -m pipeline calibrate --pairs calibration/pairs
-python -m pipeline run-all   [--webcam | --image PATH] [--dry-run]
-python -m pipeline crawl     --limit N          # refresh Bluesky index only
+python -m pipeline version
+python -m pipeline scan     IMAGE_PATH [--run-id ID] [--public-image-url URL]
+python -m pipeline search   RUN_ID [--public-image-url URL]
+python -m pipeline run-all  IMAGE_PATH [--public-image-url URL] [--anchor/--no-anchor]
+python -m pipeline anchor   RUN_ID
+python -m pipeline verify   RUN_ID [--tamper swap-artifact|edit-bundle|forge-bundle]
+python -m pipeline serve    [--host HOST] [--port PORT]
 ```
 
-Output is `rich` tables and panels — a recording deliverable, not decoration (`architecture.md` §5). `--dry-run` executes everything and anchors nothing (R-06).
+`crawl` and `calibrate` as standalone commands were never built — the
+Bluesky crawl happens inline inside `search`/`run-all`, and no calibration
+sweep exists yet (§3.2). Output is `rich` tables and panels — a recording
+deliverable, not decoration (`architecture.md` §5).
+
+Structured exit codes, shared across every command:
+
+| Code | Constant | Meaning |
+|---|---|---|
+| 0 | `EXIT_OK` | success |
+| 1 | `EXIT_VERIFICATION_MISMATCH` | `verify` reported anything other than `PASS`, or a run directory was missing/malformed |
+| 2 | `EXIT_NO_FACE` | no usable face detected or the quality gate rejected it |
+| 3 | `EXIT_PROVIDER_ERROR` | every search provider failed or was unavailable |
+| 4 | `EXIT_NO_MATCH` | search completed but the verdict was not `MATCH` |
+| 5 | `EXIT_CHAIN_ERROR` | anchor or verify hit a chain/RPC failure |
+
+Covered by `tests/test_cli_exit_codes.py`.
 
 ---
 
 ## 8. Testing
+
+**Extended 7 Sep 2026** with the categories added by Tier 2. 290 tests pass
+as of commit `0a62f17` (up from the 10 conceptual categories originally
+listed here, which undercounted the real suite considerably).
 
 | Test | Guards against |
 |---|---|
@@ -721,21 +931,40 @@ Output is `rich` tables and panels — a recording deliverable, not decoration (
 | provider raising → run still completes | orchestrator isolation (R-14) |
 | Foundry: anchor → verify round trip | contract correctness |
 | Foundry: double anchor reverts | replay protection |
-| tamper → check 1 fails | verifier actually verifies |
 | no float appears in canonical output | R-02 |
+| swapped `match_image.jpg` → `ARTIFACT_MISMATCH`, not `PASS` | R-25's defect, once real |
+| three tamper modes → three distinct, correct verdicts | tamper demo proving less than one PASS/FAIL toggle would |
+| the real `runs/<id>/` is byte-identical before/after every tamper mode | tamper demo ever touching real evidence |
+| crafted `"><script>`/quote-break/`javascript:` candidate renders as inert text | XSS (R-26) |
+| candidate URL pointing at `127.0.0.1`/`169.254.169.254`/etc. is rejected before fetch | SSRF (R-29) |
+| escalation triggers on `result_carries_identity_signal()`, never on candidate count | the exact bug already found once (§3d in `memory.md`) |
+| expanded candidate below threshold rejected exactly like a primary candidate | R-28's face-gating actually holding |
+| `linked`/`conjecture` candidates never appear in the match count | R-28 |
+| CLI exit codes match the table in §7 for each real failure mode | T2.7 |
 
 ---
 
 ## 9. Deferred
 
-Recorded so they are visibly choices, not oversights. Each becomes a README "future work" line.
+**Reconciled 7 Sep 2026** against what has actually shipped since this
+section was written. Several items below moved from "deferred" to "built" —
+those are struck through and cross-referenced. Everything else remains
+genuinely deferred.
 
-| Item | Why deferred |
+| Item | Status |
 |---|---|
-| SCRFD `det_10g` detector | YuNet is sufficient; upgrade only if detection recall disappoints |
-| FAISS | unnecessary below ~10⁵ vectors |
-| C2PA manifest | needs cert setup; first thing cut (`phases.md`) |
-| EAS attestations | custom contract already satisfies the brief |
-| zk proof of `cosine ≥ τ` | genuinely interesting, not a 3-day task |
-| Multi-frame liveness | single-frame passive model is enough |
-| CUDA execution provider | decide after Phase 1 timing |
+| SCRFD `det_10g` detector | still deferred — YuNet remains sufficient |
+| FAISS | still deferred — unnecessary below ~10⁵ vectors |
+| C2PA manifest | still deferred — needs cert setup, out of proportion for this task |
+| OpenTimestamps (`chain/ots.py`) | still deferred — evaluated, never built (§5.3) |
+| IPFS pinning | still deferred — `chain/evm.py` writes an empty CID string |
+| EAS attestations | still deferred — the custom contract already satisfies the brief |
+| zk proof of `cosine ≥ τ` | still deferred — genuinely interesting, out of scope |
+| Multi-frame liveness | still deferred — single-frame passive model is enough |
+| CUDA execution provider | still deferred — CPU inference has been fast enough throughout |
+| Benchmark-scale ROC calibration | still deferred — see §3.2's correction; the threshold is a documented, measurement-derived placeholder, not a swept ROC |
+| ~~Real CLI subcommands~~ | **built — T2.7, §7 above** |
+| ~~Artifact-level re-verification~~ | **built — R-25, §5.4, closing a real defect** |
+| ~~Cross-platform profile expansion~~ | **built — F3, §2.6** |
+| ~~SSRF hardening on candidate fetches~~ | **built — R-29** |
+| ~~Head-crop search representation~~ | **built, but currently disabled by default pending the R-27 measurement** — see §1.7 and `scripts/probe_query_representation.py` |

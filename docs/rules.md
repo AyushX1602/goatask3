@@ -404,7 +404,7 @@ The 3-day window is the binding constraint. When time is short, cut in this orde
 - The candidate table with rejection reasons
 - The quality gate (`MIN_FACE_PX`)
 - Correct `NO_MATCH` presentation (R-21)
-- The tamper demo (`verify` reporting `TAMPERED`)
+- The tamper demo (`verify` reporting `ARTIFACT_MISMATCH`/`BUNDLE_MODIFIED`/`NOT_ANCHORED` — `TAMPERED` retired as a verdict string, R-25/design.md §5.4)
 - The committed `NO_MATCH` run
 - The audit log
 - README known-limitations section

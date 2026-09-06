@@ -1,7 +1,7 @@
 {
-  "tx_hash": "0x31764a5eb6065ae313b56dbffa4d7b2e5d16229d3c6b8744f733ed39a6ca947a",
+  "tx_hash": "0x5fd225adc8635f5ccd8d950599ac16b26778a3efaa471d431ab63441ca7134c5",
   "chain_id": 31337,
-  "block_number": 8,
+  "block_number": 2,
   "contract_address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
   "gas_used": 120348,
   "evidence_hash": "0xa4a6bd6319cac0c1f098570bea5cfbb6dcdb51f94a310658a64e038430f85fd6"
