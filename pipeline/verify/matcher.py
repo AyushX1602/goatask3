@@ -107,7 +107,8 @@ def score_candidates(
         )
 
     for cand, score, faces_found in scored:
-        if getattr(cand, "origin", "face") == "linked":
+        cand_origin = getattr(cand, "origin", "face")
+        if cand_origin == "linked":
             results.append(
                 ScoredCandidate(
                     cand,
@@ -115,6 +116,17 @@ def score_candidates(
                     0,
                     "linked-claim",
                     "claimed profile link on verified page (unscored)",
+                )
+            )
+            continue
+        if cand_origin == "conjecture":
+            results.append(
+                ScoredCandidate(
+                    cand,
+                    None,
+                    0,
+                    "conjecture-claim",
+                    "same-handle guess (structural derivation, no published claim; unscored)",
                 )
             )
             continue
@@ -144,7 +156,8 @@ def score_candidates(
         if r.decision == "reject-platform-blocked" and r.candidate.match_kind in ("full", "partial")
     )
     linked_claims = tuple(
-        r for r in results if r.decision == "linked-claim" or getattr(r.candidate, "origin", "face") == "linked"
+        r for r in results if r.decision in ("linked-claim", "conjecture-claim")
+        or getattr(r.candidate, "origin", "face") in ("linked", "conjecture")
     )
 
     scoreable = [r for r in results if r.score is not None and r.decision == "pending"]

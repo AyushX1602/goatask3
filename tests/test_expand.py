@@ -118,7 +118,13 @@ def test_extract_outbound_social_links_and_link_in_bio():
 
 
 def test_expand_verified_candidates_generates_face_and_linked_origins():
-    """Candidates are expanded with correct origin classification (R-28)."""
+    """Candidates are expanded with correct origin classification (R-28 / F3).
+
+    F3 tiers:
+      face       — GitHub avatar (has a fetchable image_url to score)
+      conjecture — same-handle derivation on X, Instagram, YouTube etc. (structural guess, no published claim)
+      linked     — outbound links from verified pages (not tested here, tested in pipeline_run integration)
+    """
     verified = [
         Candidate(
             page_url="https://github.com/alice",
@@ -132,13 +138,13 @@ def test_expand_verified_candidates_generates_face_and_linked_origins():
     assert len(expanded) > 0
 
     by_plat = {c.source: c for c in expanded}
-    # Instagram & X are origin="linked" when derived without direct avatar endpoint
+    # Instagram & X get origin="conjecture" — same-handle guess, not a published claim (F3)
     assert "expand-instagram" in by_plat
-    assert by_plat["expand-instagram"].origin == "linked"
+    assert by_plat["expand-instagram"].origin == "conjecture"
     assert by_plat["expand-instagram"].image_url == ""
 
     assert "expand-x" in by_plat
-    assert by_plat["expand-x"].origin == "linked"
+    assert by_plat["expand-x"].origin == "conjecture"
 
 
 def test_expansion_face_gated_and_linked_claims_uncounted(monkeypatch):
@@ -202,23 +208,26 @@ def test_expansion_face_gated_and_linked_claims_uncounted(monkeypatch):
     assert result.match.best is not None
     assert result.match.best.candidate.page_url == obama_page
 
-    # Check that linked claims are present
-    linked_claims = [r for r in result.match.all_scored if r.decision == "linked-claim"]
-    assert len(linked_claims) > 0
+    # Check that unscored claims are present (linked-claim = outbound link; conjecture-claim = handle derivation)
+    unscored_claims = [
+        r for r in result.match.all_scored
+        if r.decision in ("linked-claim", "conjecture-claim")
+    ]
+    assert len(unscored_claims) > 0
 
-    # Linked claims MUST have score=None and origin="linked"
-    for lc in linked_claims:
-        assert lc.score is None
-        assert lc.candidate.origin == "linked"
+    # Unscored claims MUST have score=None and origin in {linked, conjecture}
+    for uc in unscored_claims:
+        assert uc.score is None
+        assert getattr(uc.candidate, "origin", "face") in ("linked", "conjecture")
 
     # LinkedIn profile was discovered and preserved, not dropped
-    linkedin_claims = [lc for lc in linked_claims if "linkedin.com" in lc.candidate.page_url]
+    linkedin_claims = [uc for uc in unscored_claims if "linkedin.com" in uc.candidate.page_url]
     assert len(linkedin_claims) == 1
 
     # Match count (ACCEPT + corroborating) must ONLY count biometric face matches
     face_matches = [r for r in result.match.all_scored if r.decision in ("ACCEPT", "corroborating")]
     assert all(r.score is not None and r.score >= POLICY.threshold for r in face_matches)
-    assert not any(r.decision == "linked-claim" for r in face_matches)
+    assert not any(r.decision in ("linked-claim", "conjecture-claim") for r in face_matches)
 
 
 def test_expanded_candidate_below_threshold_is_rejected(monkeypatch):

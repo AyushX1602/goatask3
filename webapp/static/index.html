@@ -136,6 +136,10 @@
   /* A real match above threshold, just not the top-ranked one. Must read as
      supporting evidence, never as a rejection. */
   tr.corroborating { background: rgba(31, 111, 235, 0.10); }
+  /* F3: claimed profile link on verified page (no face score, not dropped) */
+  tr.linked-claim { background: rgba(210, 153, 34, 0.08); color: var(--text-dim); }
+  /* F3: same-handle structural guess (not a published claim; no face score) */
+  tr.conjecture-claim { background: rgba(139, 92, 246, 0.07); color: var(--text-dim); }
   a { color: #58a6ff; text-decoration: none; }
   a:hover { text-decoration: underline; }
   .score-bar { display: inline-block; height: 6px; border-radius: 3px; background: #30363d; width: 80px; position: relative; vertical-align: middle; margin-right: 6px; }

@@ -46,7 +46,14 @@ class Candidate:
     # signal about cross-platform image reuse worth showing) from "just
     # another lookalike, ignore it".
     match_kind: str = "unknown"
-    # R-28: "face" (biometrically verified) vs "linked" (claimed profile link on verified page)
+    # R-28 / F3: evidence tier for this candidate.
+    #   "face"       – biometrically verifiable (has image_url, scored by ArcFace).
+    #   "linked"     – explicit claim published on a verified page (outbound link or
+    #                  SERP-recovered profile); media blocked / no image. Recorded,
+    #                  never dropped, never counted as a face match.
+    #   "conjecture" – same-handle guess derived from derive_profile_urls(); a
+    #                  structural guess, not a published claim. Displayed separately
+    #                  in the UI, excluded from verified-match summary counts.
     origin: str = "face"
 
 

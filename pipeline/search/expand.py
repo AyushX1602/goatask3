@@ -315,7 +315,17 @@ def expand_verified_candidates(
 def _add_expanded_candidate(
     target_list: list[Candidate], platform: str, url: str, handle: str
 ) -> None:
-    """Helper to classify expanded candidate into origin='face' or origin='linked'."""
+    """Helper to classify expanded candidate into origin='face', 'linked', or 'conjecture'.
+
+    F3 origin tiers:
+      face       — GitHub avatar: has a real, publicly fetchable image_url we can score.
+      conjecture — all other same-handle derivations (X, Instagram, YouTube, etc.).
+                   These are structural guesses — the same handle *might* belong to the
+                   same person, but we have no direct evidence. Displayed separately,
+                   excluded from verified-match summary counts.
+    Outbound links from verified pages (extract_outbound_social_links) are wired
+    directly by the caller with origin="linked" — that path does not go through here.
+    """
     if platform == "github":
         target_list.append(
             Candidate(
@@ -326,23 +336,13 @@ def _add_expanded_candidate(
                 image_url_fallbacks=(),
             )
         )
-    elif platform == "instagram":
-        target_list.append(
-            Candidate(
-                page_url=url,
-                image_url="",
-                source=f"expand-{platform}",
-                origin="linked",
-                image_url_fallbacks=(),
-            )
-        )
     else:
         target_list.append(
             Candidate(
                 page_url=url,
                 image_url="",
                 source=f"expand-{platform}",
-                origin="linked",
+                origin="conjecture",  # same-handle guess, not a published claim
                 image_url_fallbacks=(),
             )
         )

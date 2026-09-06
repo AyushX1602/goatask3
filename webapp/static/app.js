@@ -185,6 +185,7 @@ function shortenReason(decision, reason) {
   if (decision === "reject-domain") return reason || decision;
   if (decision === "reject-below-threshold") return reason || decision;
   if (decision === "linked-claim") return "claimed profile link (unscored)";
+  if (decision === "conjecture-claim") return "same-handle guess (unverified)";
   return reason || decision;
 }
 
@@ -359,9 +360,9 @@ function renderResults(data) {
   // that "if everything's rejected, what's accepted?" was a real question
   // asked against a run that DID match. Decision order is the only thing
   // that changes; scores and reasons are untouched.
-  const decisionRank = { ACCEPT: 0, corroborating: 1, "linked-claim": 2 };
+  const decisionRank = { ACCEPT: 0, corroborating: 1, "linked-claim": 2, "conjecture-claim": 3 };
   const ordered = [...data.candidates].sort(
-    (a, b) => (decisionRank[a.decision] ?? 3) - (decisionRank[b.decision] ?? 3)
+    (a, b) => (decisionRank[a.decision] ?? 4) - (decisionRank[b.decision] ?? 4)
   );
 
   for (const c of ordered) {
@@ -369,6 +370,7 @@ function renderResults(data) {
     if (c.decision === "ACCEPT") tr.classList.add("accept");
     if (c.decision === "corroborating") tr.classList.add("corroborating");
     if (c.decision === "linked-claim") tr.classList.add("linked-claim");
+    if (c.decision === "conjecture-claim") tr.classList.add("conjecture-claim");
 
     const tdRank = document.createElement("td");
     tdRank.textContent = String(c.rank + 1);
