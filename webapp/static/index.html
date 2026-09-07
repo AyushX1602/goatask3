@@ -153,6 +153,15 @@
     padding: 14px; margin-bottom: 12px; font-size: 14px;
   }
   .headline-nomatch strong { color: var(--text); }
+  /* Prominent verified match and profile claims banners */
+  .headline-match {
+    background: rgba(46, 160, 67, 0.12); border: 1px solid rgba(46, 160, 67, 0.4); border-radius: 8px;
+    padding: 14px; margin-bottom: 12px; font-size: 14px;
+  }
+  .claims-banner {
+    background: rgba(210, 153, 34, 0.08); border: 1px solid rgba(210, 153, 34, 0.3); border-radius: 8px;
+    padding: 12px 14px; margin-bottom: 12px; font-size: 13px;
+  }
   details#diagnostics summary {
     cursor: pointer; color: var(--accent); font-size: 13px; margin-bottom: 10px;
     list-style: none;
@@ -223,6 +232,10 @@
 
       <!-- R-21: NO_MATCH verdict is the headline, not a candidate table -->
       <div id="headlineNoMatch" class="headline-nomatch" style="display:none;"></div>
+      <!-- Verified match showcase banner -->
+      <div id="headlineMatch" class="headline-match" style="display:none;"></div>
+      <!-- Profile claims banner -->
+      <div id="claimsBanner" class="claims-banner" style="display:none;"></div>
 
       <div id="resultSummary" style="display:none; margin-bottom:14px;">
         <span class="badge" id="verdictBadge">—</span>

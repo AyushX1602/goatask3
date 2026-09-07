@@ -20,6 +20,8 @@ const candidateBody = document.getElementById("candidateBody");
 const diagnostics = document.getElementById("diagnostics");
 const diagnosticsSummary = document.getElementById("diagnosticsSummary");
 const headlineNoMatch = document.getElementById("headlineNoMatch");
+const headlineMatch = document.getElementById("headlineMatch");
+const claimsBanner = document.getElementById("claimsBanner");
 
 // Input mode tabs (D-19)
 const tabWebcam = document.getElementById("tabWebcam");
@@ -152,6 +154,8 @@ searchBtn.addEventListener("click", async () => {
   searchStatus.textContent = "Searching (web detection primary, Bluesky keyless fallback) and re-verifying every candidate against your probe face...";
   resultSummary.style.display = "none";
   headlineNoMatch.style.display = "none";
+  if (headlineMatch) headlineMatch.style.display = "none";
+  if (claimsBanner) claimsBanner.style.display = "none";
   diagnostics.style.display = "none";
   diagnostics.open = false;
 
@@ -249,16 +253,18 @@ function renderResults(data) {
   searchStatus.style.display = "none";
   resultSummary.style.display = "block";
 
-  // Four possible verdicts now (matcher.py): MATCH, NO_MATCH, NO_CANDIDATES,
-  // MATCH_NON_SOCIAL. Each gets its OWN headline copy — never a generic
-  // "isMatch ? X : Y" — because a generic NO_MATCH-shaped sentence next to
-  // a MATCH_NON_SOCIAL caption is exactly the contradiction found live 5
-  // Sep 2026: "No match found ... honest outcome" rendered simultaneously
-  // with "1 high-scoring non-social source also matched this face".
   const isMatch = data.verdict === "MATCH";
   verdictBadge.textContent = data.verdict;
   verdictBadge.className = "badge " + (isMatch ? "match" : "no-match");
   degradedBadge.style.display = data.degraded_closed_corpus ? "inline-block" : "none";
+
+  const acceptCand = data.candidates.find((c) => c.decision === "ACCEPT");
+  const corroboratingCands = data.candidates.filter((c) => c.decision === "corroborating");
+  const corroborating = corroboratingCands.length;
+  const unverifiable = data.unverifiable_platform_hits || [];
+  const claims = data.candidates.filter(
+    (c) => c.decision === "linked-claim" || c.decision === "conjecture-claim"
+  );
 
   const corpusNote = data.degraded_closed_corpus
     ? `No web-detection key configured — searched ${data.crawl_size} indexed faces from a locally-built Bluesky corpus, not the open web.`
@@ -267,9 +273,7 @@ function renderResults(data) {
     `${corpusNote} Threshold ${data.threshold.toFixed(2)}, margin ${data.margin_required.toFixed(2)}.`;
 
   // Claimed profiles (e.g. LinkedIn) discovered via profile expansion are
-  // unscored by design (R-28) — but a claim that only exists as a collapsed
-  // table row reads as "nothing found". Surface it next to the verdict.
-  // textContent, never innerHTML: provider URLs are untrusted input (R-26).
+  // unscored by design (R-28) — surface count next to the verdict.
   if (claims.length > 0) {
     const claimList = claims
       .slice(0, 3)
@@ -280,11 +284,132 @@ function renderResults(data) {
       ` — recorded as claims, not biometrically scored.`;
   }
 
-  const corroborating = data.candidates.filter((c) => c.decision === "corroborating").length;
-  const unverifiable = data.unverifiable_platform_hits || [];
-  const claims = data.candidates.filter(
-    (c) => c.decision === "linked-claim" || c.decision === "conjecture-claim"
-  );
+  // 1. Prominent Verified Match Banner (shows direct links to matched post/profile)
+  if (headlineMatch) {
+    headlineMatch.innerHTML = "";
+    if (isMatch && acceptCand) {
+      const hTitle = document.createElement("div");
+      hTitle.style.fontWeight = "600";
+      hTitle.style.color = "#3fb950";
+      hTitle.style.fontSize = "15px";
+      hTitle.style.marginBottom = "6px";
+      hTitle.textContent = "✓ Verified Biometric Face Match";
+      headlineMatch.appendChild(hTitle);
+
+      const hInfo = document.createElement("div");
+      hInfo.style.marginBottom = "8px";
+      hInfo.style.color = "var(--text-dim)";
+      hInfo.style.fontSize = "13px";
+      const scoreVal = acceptCand.score !== null ? acceptCand.score.toFixed(4) : "—";
+      hInfo.textContent = `Provider: ${acceptCand.source} · Score: ${scoreVal} · Match Kind: ${acceptCand.match_kind || "verified"}`;
+      headlineMatch.appendChild(hInfo);
+
+      const hPost = document.createElement("div");
+      hPost.style.fontSize = "14px";
+      hPost.style.lineHeight = "1.5";
+      const hLabel = document.createElement("strong");
+      hLabel.textContent = "Matched Post / Profile: ";
+      hPost.appendChild(hLabel);
+
+      if (acceptCand.page_url && isSafeUrl(acceptCand.page_url)) {
+        const a = document.createElement("a");
+        a.href = acceptCand.page_url;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.style.color = "var(--accent)";
+        a.style.fontWeight = "600";
+        a.textContent = acceptCand.page_url;
+        hPost.appendChild(a);
+      } else {
+        const span = document.createElement("span");
+        span.textContent = acceptCand.page_url || "—";
+        hPost.appendChild(span);
+      }
+      headlineMatch.appendChild(hPost);
+
+      if (corroboratingCands.length > 0) {
+        const corrDiv = document.createElement("div");
+        corrDiv.style.marginTop = "8px";
+        corrDiv.style.fontSize = "13px";
+        const cLabel = document.createElement("strong");
+        cLabel.textContent = `Corroborating Match(es) (${corroboratingCands.length}): `;
+        corrDiv.appendChild(cLabel);
+
+        corroboratingCands.forEach((cc, idx) => {
+          if (idx > 0) corrDiv.appendChild(document.createTextNode(" · "));
+          if (cc.page_url && isSafeUrl(cc.page_url)) {
+            const ca = document.createElement("a");
+            ca.href = cc.page_url;
+            ca.target = "_blank";
+            ca.rel = "noopener noreferrer";
+            ca.style.color = "var(--accent)";
+            ca.textContent = cc.page_url.replace(/^https?:\/\/(www\.)?/, "");
+            corrDiv.appendChild(ca);
+          } else {
+            corrDiv.appendChild(document.createTextNode(cc.source));
+          }
+        });
+        headlineMatch.appendChild(corrDiv);
+      }
+      headlineMatch.style.display = "block";
+    } else {
+      headlineMatch.style.display = "none";
+    }
+  }
+
+  // 2. Discovered Profile Claims Banner (LinkedIn, Instagram, etc. found via expansion)
+  if (claimsBanner) {
+    claimsBanner.innerHTML = "";
+    if (claims.length > 0) {
+      const cTitle = document.createElement("div");
+      cTitle.style.fontWeight = "600";
+      cTitle.style.color = "#d29922";
+      cTitle.style.marginBottom = "6px";
+      cTitle.textContent = `Discovered Profile Claim(s) (${claims.length})`;
+      claimsBanner.appendChild(cTitle);
+
+      const cNote = document.createElement("div");
+      cNote.style.color = "var(--text-dim)";
+      cNote.style.fontSize = "12px";
+      cNote.style.marginBottom = "8px";
+      cNote.textContent = "Discovered via handle/profile expansion or SERP lookup. Preserved as claims (not biometrically scored due to platform media walls):";
+      claimsBanner.appendChild(cNote);
+
+      const list = document.createElement("ul");
+      list.style.margin = "0";
+      list.style.paddingLeft = "20px";
+      for (const c of claims) {
+        const li = document.createElement("li");
+        li.style.marginBottom = "4px";
+        const badge = document.createElement("span");
+        badge.style.fontSize = "11px";
+        badge.style.padding = "2px 6px";
+        badge.style.borderRadius = "4px";
+        badge.style.marginRight = "8px";
+        badge.style.background = c.decision === "linked-claim" ? "rgba(210,153,34,0.2)" : "rgba(139,92,246,0.2)";
+        badge.style.color = c.decision === "linked-claim" ? "#d29922" : "#a78bfa";
+        badge.textContent = c.decision === "linked-claim" ? "linked" : "conjecture";
+        li.appendChild(badge);
+
+        if (c.page_url && isSafeUrl(c.page_url)) {
+          const a = document.createElement("a");
+          a.href = c.page_url;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.style.color = "var(--accent)";
+          a.textContent = c.page_url;
+          li.appendChild(a);
+        } else {
+          li.appendChild(document.createTextNode(c.page_url || c.source));
+        }
+        list.appendChild(li);
+      }
+      claimsBanner.appendChild(list);
+      claimsBanner.style.display = "block";
+    } else {
+      claimsBanner.style.display = "none";
+    }
+  }
 
   // R-21: the verdict is the headline for every non-MATCH outcome.
   // Rejected candidates go behind a "show diagnostics" toggle.
@@ -321,7 +446,7 @@ function renderResults(data) {
         : "") +
       (claims.length > 0
         ? ` <strong>${claims.length} profile claim(s)</strong> were found via profile ` +
-          `expansion and are listed in the table below as claims, not face matches.`
+          `expansion and are displayed in the claims list above.`
         : "");
   } else {
     headlineNoMatch.style.display = "none";
@@ -362,10 +487,12 @@ function renderResults(data) {
   }
 
   diagnostics.style.display = "block";
+  diagnostics.open = isMatch || claims.length > 0;
   diagnosticsSummary.textContent = isMatch
-    ? `show diagnostics (${data.candidates.length} candidate(s) examined` +
-      (corroborating > 0 ? `, ${corroborating} corroborating` : "") + `)`
-    : `show diagnostics (${data.candidates.length} candidate(s) examined — noise, not suggestions)`;
+    ? `Candidate Verification Table (${data.candidates.length} examined · ${1 + corroborating} match(es))`
+    : (claims.length > 0
+      ? `Candidate Verification Table (${data.candidates.length} examined · ${claims.length} claim(s))`
+      : `show diagnostics (${data.candidates.length} candidate(s) examined — noise, not suggestions)`);
   candidateTable.style.display = "table";
 
   candidateBody.innerHTML = "";
