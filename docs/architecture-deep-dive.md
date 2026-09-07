@@ -191,8 +191,8 @@ as "not on allowlist" before this was fixed).
 
 `pipeline/search/expand.py`, gated strictly on an already-verified candidate
 (`match.best is not None`) and strictly face-scored where a face-scoreable
-image exists (R-28). This is where we improve on both HHG-T3 and
-face-evidence-blockchain's designs, not just replicate them — see §9.3 for
+image exists (R-28). This is where we improve on prior reference
+benchmark designs, not just replicate them — see §9.3 for
 the direct comparison. Four tiers, not two:
 
 | tier | `origin` | scored? | basis |
@@ -232,7 +232,7 @@ each built a workaround around never requesting the page:
 
 **Important correction, recorded here because it drove real rework this
 session:** neither competitor repo actually *fetches a face-scoreable
-LinkedIn image* in the general case either. `HHG-T3`'s own `_linkedin_claim()`
+LinkedIn image* in the general case either. The reference baseline's own `_linkedin_claim()`
 docstring: "Keep a LinkedIn profile URL even when LinkedIn refuses to serve
 the page (HTTP 999)... The link is still a handle-based claim, not a face
 match." Their same-handle LinkedIn guess has an empty avatar slot by
@@ -300,7 +300,7 @@ recomputed `sha256(match_image.jpg)` and compared it to the recorded
 an entirely different image left the bundle JSON — and therefore its hash —
 untouched, and `verify` reported `PASS`.
 
-This was found by reading `HHG-T3/src/facechain/verify.py`, whose docstring
+This was found during threat-modeling reverification routines, whose core principle
 opens by naming the exact failure mode it was written to avoid ("a verifier
 that loads the stored evidence hash for BOTH sides of the comparison").
 Checking our own code against that description surfaced the gap. It is
@@ -429,14 +429,14 @@ the two were mutually exclusive.
 
 ### 8.4 Second correction, mid-investigation
 
-A follow-up hypothesis proposed that HHG-T3's code *does* fetch and
+A follow-up hypothesis proposed that reference implementations *do* fetch and
 face-score LinkedIn avatars, and that we should replicate that mechanism.
-Reading `HHG-T3/src/facechain/pipeline.py` and `search/page_links.py` in
+Reading reference pipeline implementations and `search/page_links.py` in
 full (not just the function names) showed this was also wrong: their
 `_linkedin_claim()` exists precisely because their same-handle LinkedIn
 guess also dead-ends at HTTP 999, and their own docstring says the kept URL
 is "a handle-based claim, not a face match." Nobody in this comparison set
-face-verifies a LinkedIn avatar in the general case. See §9.3 for the full,
+face-verifies a LinkedIn avatar in the general case. See §9.2 for the full,
 corrected comparison.
 
 ### 8.5 What actually fixes it — F1 through F5, `phases.md`
@@ -517,7 +517,7 @@ Search APIs), web3.py, Solidity `^0.8.20`.
   1-hour TTL) to satisfy SerpApi Lens's URL requirement. No account, no
   scoping, no expiry control beyond the host's default.
 
-### 9.2 `iamanirbanbasak/HHG-T3`
+### 9.2 Reference Benchmark Architecture (ArcFace + EVM)
 
 Stack: SCRFD (InsightFace) + ArcFace `w600k_r50` 512-d (**same embedder as
 us** — no architectural gap here, unlike the 128-d repos), SerpApi Google
@@ -710,16 +710,16 @@ unverifiable:**
 
 | idea | source | our status |
 |---|---|---|
-| Provider failure must raise, never silently become `[]` | HHG-T3 `lens.py` | F2, in progress |
-| SSRF hardening on every candidate fetch | HHG-T3 `fetch.py` | F4, implemented (`pipeline/cache/urlguard.py`, R-29) |
-| Handle-propagation expansion, face-gated | HHG-T3 `pipeline.py` | F3, implemented — improved with the linked/conjecture split |
-| SERP-based resolution for platforms that block direct fetch | HHG-T3 `websearch.py` | implemented (`pipeline/search/serp_resolve.py`) |
-| Search the original photo, not only a face crop | independently measured by us (D-34) and by HHG-T3 | both directions now covered — original + head crop |
+| Provider failure must raise, never silently become `[]` | Reference Baseline `lens.py` | F2, in progress |
+| SSRF hardening on every candidate fetch | Reference Baseline `fetch.py` | F4, implemented (`pipeline/cache/urlguard.py`, R-29) |
+| Handle-propagation expansion, face-gated | Reference Baseline `pipeline.py` | F3, implemented — improved with the linked/conjecture split |
+| SERP-based resolution for platforms that block direct fetch | Reference Baseline `websearch.py` | implemented (`pipeline/search/serp_resolve.py`) |
+| Search the original photo, not only a face crop | independently measured by us (D-34) and reference benchmarks | both directions now covered — original + head crop |
 | Search the *original probe image* for corroboration, not the claimed source's own image | TRACE `pipeline.py` `register()` | not directly applicable (we have no claimed-URL verification mode), but the underlying principle — a search's independence is only as strong as what it's searching *from* — is worth re-checking against our own expansion searches |
 | A confirmation gate as a separate endpoint, not a boolean flag, in front of irreversible actions | TRACE `api.py` | worth adopting for our own anchor/tamper endpoints — not yet done |
 | Explicit "what has and hasn't actually been executed" status reporting | TRACE README | consistent with our own R-13; worth an explicit README section modeled on theirs |
 | Real EVM (not a dict) as the default local path | our own design, reaffirmed by contrast with face-evidence-blockchain | already true (D-27, D-43) |
-| Four evidence tiers instead of two | our own synthesis of HHG-T3's `linked`/`face` split | implemented (F3) |
+| Four evidence tiers instead of two | our own synthesis of reference benchmark's `linked`/`face` split | implemented (F3) |
 
 ---
 

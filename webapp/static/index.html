@@ -5,175 +5,694 @@
 <title>face-chain-verify — local demo</title>
 <style>
   :root {
-    color-scheme: dark;
-    --bg: #0d1117;
-    --panel: #161b22;
-    --panel-alt: #1c2128;
-    --border: #30363d;
-    --text: #e6edf3;
-    --text-dim: #8b949e;
-    --text-faint: #6e7681;
-    --accent: #58a6ff;
-    --blue: #1f6feb;
-    --blue-hover: #388bfd;
-    --green: #2ea043;
-    --green-hover: #3fb950;
-    --red: #da3633;
-    --red-hover: #f85149;
+    --bg: #f7f5ee;
+    --panel: #ffffff;
+    --panel-alt: #f1f5f9;
+    --border: #000000;
+    --text: #0f172a;
+    --text-dim: #475569;
+    --text-faint: #94a3b8;
+    --accent: #00d2ff;
+    --yellow: #ffe600;
+    --green: #00e575;
+    --green-hover: #00c966;
+    --blue: #00d2ff;
+    --blue-hover: #00b4db;
+    --red: #ff4757;
+    --red-hover: #e84118;
+    --mono: "JetBrains Mono", "SF Mono", SFMono-Regular, ui-monospace, Menlo, Consolas, monospace;
+    --ok: #00a854;
+    --data: #d97706;
+    --bad: #e11d48;
+    --live: #0284c7;
   }
   * { box-sizing: border-box; }
   body {
-    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     background: var(--bg);
     color: var(--text);
     margin: 0;
     padding: 28px;
   }
-  h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; letter-spacing: 0.01em; }
-  .subtitle { color: var(--text-dim); font-size: 13px; margin-bottom: 22px; max-width: 900px; line-height: 1.5; }
-  .layout { display: grid; grid-template-columns: 340px 1fr; gap: 20px; align-items: start; }
+  h1 {
+    font-size: 22px;
+    font-weight: 900;
+    margin: 0 0 6px;
+    letter-spacing: -0.02em;
+    text-transform: uppercase;
+    color: #000;
+  }
+  .subtitle {
+    color: #334155;
+    font-size: 13px;
+    margin-bottom: 24px;
+    max-width: 960px;
+    line-height: 1.55;
+    font-weight: 500;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 22px;
+    align-items: start;
+  }
   .panel {
     background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 18px;
+    border: 2.5px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 5px 5px 0px var(--border);
+    padding: 20px;
   }
-  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); margin: 0 0 14px; font-weight: 600; }
+  .panel h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #000;
+    margin: 0 0 16px;
+    font-weight: 900;
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 6px;
+  }
   video, #cropPreview {
     width: 100%;
-    border-radius: 8px;
-    background: #000;
-  }
-  #cropPreview { width: 112px; height: 112px; image-rendering: pixelated; border: 1px solid var(--border); }
-
-  /* ---- buttons: one consistent system ---- */
-  button {
-    background: var(--panel-alt);
-    color: var(--text);
-    border: 1px solid var(--border);
     border-radius: 6px;
+    background: #000;
+    border: 2px solid var(--border);
+    box-shadow: 3px 3px 0px var(--border);
+  }
+  #cropPreview {
+    width: 112px;
+    height: 112px;
+    image-rendering: pixelated;
+  }
+
+  /* ---- Neobrutalism buttons ---- */
+  button {
+    background: #ffffff;
+    color: #000000;
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 3px 3px 0px var(--border);
     padding: 10px 16px;
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 700;
     cursor: pointer;
     width: 100%;
     margin-top: 10px;
-    transition: background 0.12s ease, border-color 0.12s ease, transform 0.05s ease;
+    transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.1s ease;
   }
-  button:hover:not(:disabled) { border-color: #484f58; }
-  button:active:not(:disabled) { transform: translateY(1px); }
-  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  button:disabled { background: #21262d; color: var(--text-faint); border-color: var(--border); cursor: not-allowed; }
+  button:hover:not(:disabled) {
+    transform: translate(-1px, -1px);
+    box-shadow: 4px 4px 0px var(--border);
+  }
+  button:active:not(:disabled) {
+    transform: translate(2px, 2px);
+    box-shadow: 1px 1px 0px var(--border);
+  }
+  button:focus-visible {
+    outline: 2.5px solid #000;
+    outline-offset: 2px;
+  }
+  button:disabled {
+    background: #e2e8f0;
+    color: #94a3b8;
+    border-color: #94a3b8;
+    box-shadow: none;
+    cursor: not-allowed;
+  }
 
-  /* Primary action (capture/scan/search) — green, the "go forward" color */
-  button.primary { background: var(--green); border-color: var(--green); color: #fff; }
-  button.primary:hover:not(:disabled) { background: var(--green-hover); border-color: var(--green-hover); }
-  #captureBtn, #uploadBtn, #searchBtn { background: var(--green); border-color: var(--green); color: #fff; }
+  /* Primary action buttons: Neobrutalism Yellow */
+  button.primary {
+    background: var(--yellow);
+    border-color: var(--border);
+    color: #000;
+  }
+  button.primary:hover:not(:disabled) {
+    background: #ffd600;
+  }
+  #captureBtn, #uploadBtn, #searchBtn {
+    background: var(--yellow);
+    border-color: var(--border);
+    color: #000;
+  }
   #captureBtn:hover:not(:disabled), #uploadBtn:hover:not(:disabled), #searchBtn:hover:not(:disabled) {
-    background: var(--green-hover); border-color: var(--green-hover);
+    background: #ffd600;
   }
 
-  /* Secondary action (anchor/verify) — blue, "informational / confirm" */
-  button.secondary { background: var(--blue); border-color: var(--blue); color: #fff; }
-  button.secondary:hover:not(:disabled) { background: var(--blue-hover); border-color: var(--blue-hover); }
+  /* Secondary action buttons: Mint / Cyan */
+  button.secondary {
+    background: var(--blue);
+    border-color: var(--border);
+    color: #000;
+  }
+  button.secondary:hover:not(:disabled) {
+    background: var(--blue-hover);
+  }
 
-  /* Destructive / adversarial action (tamper) — red, clearly distinct */
-  button.danger { background: var(--red); border-color: var(--red); color: #fff; }
-  button.danger:hover:not(:disabled) { background: var(--red-hover); border-color: var(--red-hover); }
+  /* Destructive action buttons: Bold Alert Red */
+  button.danger {
+    background: var(--red);
+    border-color: var(--border);
+    color: #fff;
+  }
+  button.danger:hover:not(:disabled) {
+    background: var(--red-hover);
+  }
 
   .btn-row { display: flex; gap: 8px; }
   .btn-row button { margin-top: 0; }
 
-  /* Input mode tabs (D-19: upload is first-class, not a fallback) */
-  .tabs { display: flex; gap: 6px; margin-bottom: 14px; background: var(--panel-alt); border-radius: 7px; padding: 3px; }
-  .tab-btn {
-    flex: 1; background: transparent; color: var(--text-dim); border: none;
-    border-radius: 5px; padding: 8px; font-size: 13px; margin-top: 0; cursor: pointer;
-    transition: background 0.12s ease, color 0.12s ease;
+  /* Input mode tabs */
+  .tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+    background: #e2e8f0;
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 3px 3px 0px var(--border);
+    padding: 4px;
   }
-  .tab-btn:hover:not(.active) { color: var(--text); }
-  .tab-btn.active { background: var(--blue); color: #fff; }
+  .tab-btn {
+    flex: 1;
+    background: transparent;
+    color: #475569;
+    border: none;
+    border-radius: 4px;
+    padding: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    margin-top: 0;
+    cursor: pointer;
+    box-shadow: none;
+    transition: background 0.1s ease, color 0.1s ease;
+  }
+  .tab-btn:hover:not(.active) { color: #000; }
+  .tab-btn.active {
+    background: var(--yellow);
+    color: #000;
+    border: 2px solid var(--border);
+    box-shadow: 2px 2px 0px var(--border);
+  }
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
   .drop-zone {
-    border: 2px dashed var(--border); border-radius: 8px; padding: 28px 10px;
-    text-align: center; color: var(--text-dim); font-size: 13px; cursor: pointer;
-    transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+    border: 2.5px dashed var(--border);
+    border-radius: 6px;
+    box-shadow: 3px 3px 0px var(--border);
+    padding: 24px 12px;
+    text-align: center;
+    background: #ffffff;
+    color: #1e293b;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.12s ease;
   }
-  .drop-zone:hover { border-color: #484f58; background: rgba(255,255,255,0.02); }
-  .drop-zone.drag-over { border-color: var(--accent); color: var(--accent); background: rgba(88, 166, 255, 0.06); }
-  #uploadPreview { width: 100%; border-radius: 8px; margin-top: 10px; display: none; max-height: 180px; object-fit: contain; border: 1px solid var(--border); }
+  .drop-zone:hover {
+    background: #fef9c3;
+  }
+  .drop-zone.drag-over {
+    background: #fef08a;
+  }
+  #uploadPreview {
+    width: 100%;
+    border-radius: 6px;
+    margin-top: 10px;
+    display: none;
+    max-height: 180px;
+    object-fit: contain;
+    border: 2px solid var(--border);
+    box-shadow: 3px 3px 0px var(--border);
+  }
+
+  /* Badges */
   .badge {
     display: inline-block;
-    padding: 2px 8px;
+    padding: 3px 8px;
+    border: 2px solid var(--border);
     border-radius: 4px;
-    font-size: 12px;
+    box-shadow: 2px 2px 0px var(--border);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .badge.live { background: #86efac; color: #000; }
+  .badge.spoof { background: #fca5a5; color: #000; }
+  .badge.unknown, .badge.not_applicable { background: #e2e8f0; color: #000; }
+  .badge.match { background: #86efac; color: #000; }
+  .badge.no-match { background: #e2e8f0; color: #000; }
+  .badge.degraded { background: var(--yellow); color: #000; margin-left: 6px; }
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 7px 0;
+    border-bottom: 1.5px solid #cbd5e1;
+  }
+  .stat-row span:first-child { color: var(--text-dim); }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px;
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 3px 3px 0px var(--border);
+    background: #ffffff;
+    overflow: hidden;
+  }
+  th {
+    text-align: left;
+    color: #000;
+    font-weight: 800;
+    padding: 9px 8px;
+    background: #f1f5f9;
+    border-bottom: 2px solid var(--border);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  td {
+    padding: 9px 8px;
+    border-bottom: 1px solid #e2e8f0;
+    vertical-align: middle;
+  }
+  tbody tr:hover { background: #fef9c3; }
+  td.reason-cell {
+    max-width: 260px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: help;
+  }
+  td.mk-full { color: #0284c7; font-weight: 700; }
+  td.mk-partial { color: #64748b; }
+  td.mk-weak { color: #94a3b8; }
+  tr.accept { background: #bbf7d0; font-weight: 600; }
+  tr.corroborating { background: #bae6fd; font-weight: 600; }
+  tr.linked-claim { background: #fef08a; color: #713f12; }
+  tr.conjecture-claim { background: #e9d5ff; color: #581c87; }
+  a { color: #0284c7; font-weight: 700; text-decoration: underline; }
+  a:hover { color: #0369a1; }
+  .score-bar {
+    display: inline-block;
+    height: 8px;
+    border-radius: 4px;
+    background: #e2e8f0;
+    border: 1px solid #000;
+    width: 80px;
+    position: relative;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  .score-fill {
+    height: 6px;
+    border-radius: 3px;
+    background: #38bdf8;
+    position: absolute;
+    left: 0;
+    top: 0;
+  }
+  .score-fill.accept { background: #22c55e; }
+  .empty {
+    color: var(--text-dim);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 24px;
+    text-align: center;
+    background: #f8fafc;
+    border: 2px dashed var(--border);
+    border-radius: 6px;
+    box-shadow: 2px 2px 0px var(--border);
+  }
+  #status { font-size: 13px; font-weight: 600; color: #000; margin-top: 10px; min-height: 18px; }
+
+  /* Banners */
+  .headline-nomatch {
+    background: #f1f5f9;
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 4px 4px 0px var(--border);
+    padding: 14px;
+    margin-bottom: 14px;
+    font-size: 14px;
+    color: #000;
+  }
+  .headline-nomatch strong { color: #000; }
+  .headline-match {
+    background: #dcfce7;
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 4px 4px 0px var(--border);
+    padding: 14px;
+    margin-bottom: 14px;
+    font-size: 14px;
+    color: #14532d;
     font-weight: 600;
   }
-  .badge.live { background: #238636; color: #fff; }
-  .badge.spoof { background: #da3633; color: #fff; }
-  .badge.unknown, .badge.not_applicable { background: #6e7681; color: #fff; }
-  .badge.match { background: #238636; color: #fff; }
-  .badge.no-match { background: #6e7681; color: #fff; }
-  .badge.degraded { background: #9e6a03; color: #fff; margin-left: 6px; }
-  .stat-row { display: flex; justify-content: space-between; font-size: 13px; padding: 6px 0; border-bottom: 1px solid #21262d; }
-  .stat-row span:first-child { color: var(--text-dim); }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { text-align: left; color: var(--text-dim); font-weight: 500; padding: 9px 8px; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
-  td { padding: 9px 8px; border-bottom: 1px solid #21262d; vertical-align: middle; }
-  tbody tr:hover { background: rgba(255,255,255,0.02); }
-  /* Reason cells stay one line; the full sentence lives in the title
-     tooltip (app.js shortenReason) so a row never becomes a billboard. */
-  td.reason-cell { max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: help; }
-  /* match_kind (T1.2): diagnostic strength of the provider's own image-
-     identity claim. Never affects accept/reject styling (R-03) — this is
-     a separate, weaker visual signal, always dimmer than the accept/reject
-     row highlighting. */
-  td.mk-full { color: #58a6ff; font-weight: 600; }
-  td.mk-partial { color: #8b949e; }
-  td.mk-weak { color: #6e7681; }
-  tr.accept { background: rgba(35, 134, 54, 0.12); }
-  /* A real match above threshold, just not the top-ranked one. Must read as
-     supporting evidence, never as a rejection. */
-  tr.corroborating { background: rgba(31, 111, 235, 0.10); }
-  /* F3: claimed profile link on verified page (no face score, not dropped) */
-  tr.linked-claim { background: rgba(210, 153, 34, 0.08); color: var(--text-dim); }
-  /* F3: same-handle structural guess (not a published claim; no face score) */
-  tr.conjecture-claim { background: rgba(139, 92, 246, 0.07); color: var(--text-dim); }
-  a { color: #58a6ff; text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  .score-bar { display: inline-block; height: 6px; border-radius: 3px; background: #30363d; width: 80px; position: relative; vertical-align: middle; margin-right: 6px; }
-  .score-fill { height: 6px; border-radius: 3px; background: #58a6ff; position: absolute; left: 0; top: 0; }
-  .score-fill.accept { background: #3fb950; }
-  .empty { color: var(--text-faint); font-size: 13px; padding: 20px; text-align: center; }
-  #status { font-size: 13px; color: var(--text-dim); margin-top: 10px; min-height: 18px; }
-  /* R-21: on NO_MATCH the verdict is the headline, candidates are diagnostics */
-  .headline-nomatch {
-    background: var(--panel-alt); border: 1px solid var(--border); border-radius: 8px;
-    padding: 14px; margin-bottom: 12px; font-size: 14px;
-  }
-  .headline-nomatch strong { color: var(--text); }
-  /* Prominent verified match and profile claims banners */
-  .headline-match {
-    background: rgba(46, 160, 67, 0.12); border: 1px solid rgba(46, 160, 67, 0.4); border-radius: 8px;
-    padding: 14px; margin-bottom: 12px; font-size: 14px;
-  }
   .claims-banner {
-    background: rgba(210, 153, 34, 0.08); border: 1px solid rgba(210, 153, 34, 0.3); border-radius: 8px;
-    padding: 12px 14px; margin-bottom: 12px; font-size: 13px;
+    background: #fef9c3;
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 4px 4px 0px var(--border);
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    color: #713f12;
+    font-weight: 600;
   }
   details#diagnostics summary {
-    cursor: pointer; color: var(--accent); font-size: 13px; margin-bottom: 10px;
+    cursor: pointer;
+    color: #0284c7;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 10px;
     list-style: none;
+    text-decoration: underline;
   }
   details#diagnostics summary::-webkit-details-marker { display: none; }
-  .noise-note { color: var(--text-faint); font-size: 12px; margin-top: 6px; }
-  #chainPanel { border-top: 1px solid var(--border); }
-  #chainResult {
-    background: var(--panel-alt); border: 1px solid var(--border); border-radius: 6px;
-    padding: 10px; min-height: 0;
+  .noise-note {
+    color: #475569;
+    font-size: 12px;
+    margin-top: 8px;
+    line-height: 1.45;
   }
-  #chainResult:empty { display: none; }
+  #chainPanel {
+    border-top: 2.5px solid var(--border);
+  }
+
+  /* ── Neobrutalism Forensic Chain Cards ── */
+  .chain-card {
+    border: 2px solid var(--border);
+    background: #ffffff;
+    border-radius: 8px;
+    box-shadow: 4px 4px 0px var(--border);
+    margin-bottom: 18px;
+    overflow: hidden;
+  }
+  .chain-card > h3 {
+    margin: 0;
+    padding: 11px 15px;
+    font-size: 12px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: #000000;
+    font-weight: 900;
+    border-bottom: 2px solid var(--border);
+    font-family: var(--mono);
+    background: #f1f5f9;
+  }
+  .chain-card.ok > h3 {
+    background: #86efac;
+    color: #000;
+  }
+  .chain-card.bad > h3 {
+    background: #fca5a5;
+    color: #000;
+  }
+  .chain-card.warn > h3 {
+    background: var(--yellow);
+    color: #000;
+  }
+  .chain-card .body { padding: 16px; }
+
+  .kv {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 8px 16px;
+    font-size: 12px;
+    margin: 0;
+  }
+  .kv dt {
+    color: #475569;
+    white-space: nowrap;
+    font-size: 11px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    font-family: var(--mono);
+    font-weight: 700;
+  }
+  .kv dd {
+    margin: 0;
+    color: #0f172a;
+    word-break: break-all;
+    font-family: var(--mono);
+    font-weight: 600;
+  }
+  .hash {
+    background: #fef08a;
+    color: #000000;
+    border: 1px solid var(--border);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11.5px;
+    letter-spacing: .01em;
+    word-break: break-all;
+    font-family: var(--mono);
+    font-weight: 700;
+  }
+
+  .explain {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border: 2px solid var(--border);
+    box-shadow: 2px 2px 0px var(--border);
+    color: #1e293b;
+    font-size: 12px;
+    line-height: 1.6;
+    background: #f8fafc;
+    border-radius: 6px;
+  }
+  .explain strong { color: #000; }
+
+  .seal {
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    box-shadow: 4px 4px 0px var(--border);
+    background: #fee2e2;
+    padding: 22px 18px;
+    text-align: center;
+  }
+  .seal .warn-title {
+    color: #991b1b;
+    font-size: 12px;
+    letter-spacing: .15em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    font-weight: 900;
+    font-family: var(--mono);
+  }
+  .seal p {
+    color: #000;
+    font-size: 13px;
+    max-width: 600px;
+    margin: 0 auto 16px;
+    line-height: 1.6;
+    font-weight: 600;
+  }
+  .seal .note {
+    color: #64748b;
+    font-size: 11.5px;
+    margin-top: 12px;
+    font-weight: 600;
+  }
+
+  button.cyber-btn {
+    font: 700 12px var(--mono);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    background: var(--green);
+    color: #000000;
+    border: 2px solid var(--border);
+    box-shadow: 3px 3px 0px var(--border);
+    padding: 8px 18px;
+    border-radius: 5px;
+    cursor: pointer;
+    width: auto;
+    margin-top: 0;
+    transition: transform 0.08s, box-shadow 0.08s, background 0.1s;
+  }
+  button.cyber-btn:hover:not(:disabled) {
+    background: #20ff8e;
+    transform: translate(-1px, -1px);
+    box-shadow: 4px 4px 0px var(--border);
+  }
+  button.cyber-btn:active:not(:disabled) {
+    transform: translate(2px, 2px);
+    box-shadow: 1px 1px 0px var(--border);
+  }
+  button.cyber-btn.ghost {
+    background: #ffffff;
+    color: #000000;
+    border: 2px solid var(--border);
+    box-shadow: 3px 3px 0px var(--border);
+  }
+  button.cyber-btn.ghost:hover:not(:disabled) {
+    background: #f1f5f9;
+  }
+
+  button.break {
+    font: 700 12px var(--mono);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    background: var(--red);
+    color: #ffffff;
+    border: 2px solid var(--border);
+    box-shadow: 3px 3px 0px var(--border);
+    padding: 9px 24px;
+    border-radius: 5px;
+    cursor: pointer;
+    width: auto;
+    margin-top: 0;
+    transition: transform 0.08s, box-shadow 0.08s, background 0.1s;
+  }
+  button.break:hover:not(:disabled) {
+    background: var(--red-hover);
+    transform: translate(-1px, -1px);
+    box-shadow: 4px 4px 0px var(--border);
+  }
+  button.break:active:not(:disabled) {
+    transform: translate(2px, 2px);
+    box-shadow: 1px 1px 0px var(--border);
+  }
+
+  /* Section 3 Action Buttons */
+  button.anchor-btn-top, button#doAnchorBtn {
+    background: var(--green) !important;
+    color: #000000 !important;
+    border: 2px solid var(--border) !important;
+    box-shadow: 3px 3px 0px var(--border) !important;
+    font-weight: 800 !important;
+  }
+  button.anchor-btn-top:hover:not(:disabled), button#doAnchorBtn:hover:not(:disabled) {
+    background: #20ff8e !important;
+  }
+
+  button.verify-btn-top, button#doVerifyBtn {
+    background: #00d2ff !important;
+    color: #000000 !important;
+    border: 2px solid var(--border) !important;
+    box-shadow: 3px 3px 0px var(--border) !important;
+    font-weight: 800 !important;
+  }
+  button.verify-btn-top:hover:not(:disabled), button#doVerifyBtn:hover:not(:disabled) {
+    background: #00b4db !important;
+    color: #000000 !important;
+  }
+
+  button.tamper-btn-top, button#breakSealBtn {
+    background: var(--red) !important;
+    color: #ffffff !important;
+    border: 2px solid var(--border) !important;
+    box-shadow: 3px 3px 0px var(--border) !important;
+    font-weight: 800 !important;
+  }
+  button.tamper-btn-top:hover:not(:disabled), button#breakSealBtn:hover:not(:disabled) {
+    background: var(--red-hover) !important;
+    color: #ffffff !important;
+  }
+
+  .cmp {
+    display: grid;
+    gap: 10px;
+    margin-top: 14px;
+    text-align: left;
+  }
+  .cmp .row {
+    display: grid;
+    grid-template-columns: 130px 1fr;
+    gap: 12px;
+    align-items: baseline;
+    padding: 9px 12px;
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 2px 2px 0px var(--border);
+    background: #f8fafc;
+  }
+  .cmp .row.diff {
+    border-color: #dc2626;
+    background: #fee2e2;
+  }
+  .cmp .row .tag {
+    color: #475569;
+    font-size: 11px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    font-weight: 800;
+    font-family: var(--mono);
+  }
+
+  .verdict {
+    font-size: 14px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    font-weight: 900;
+    font-family: var(--mono);
+  }
+  .verdict.ok { color: #047857; }
+  .verdict.bad { color: #b91c1c; }
+
+  .gallery {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .gallery figure {
+    margin: 0;
+    text-align: center;
+  }
+  .gallery img {
+    width: 160px;
+    height: 140px;
+    object-fit: contain;
+    border-radius: 6px;
+    border: 2px solid var(--border);
+    box-shadow: 3px 3px 0px var(--border);
+    background: #000;
+  }
+  .gallery figcaption {
+    color: #475569;
+    font-size: 11px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    font-weight: 700;
+    margin-top: 6px;
+  }
+
+  .json-textarea {
+    width: 100%;
+    min-height: 240px;
+    background: #0f172a;
+    color: #38bdf8;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.55;
+    padding: 12px;
+    border: 2px solid var(--border);
+    box-shadow: 3px 3px 0px var(--border);
+    border-radius: 6px;
+    box-sizing: border-box;
+  }
+
+  select#runsSelect {
+    background: #ffffff;
+    color: #000000;
+    border: 2px solid var(--border);
+    box-shadow: 2px 2px 0px var(--border);
+    border-radius: 5px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    min-width: 250px;
+    font-family: var(--mono);
+    outline: none;
+  }
 </style>
 </head>
 <body>
@@ -206,11 +725,6 @@
         </div>
         <input type="file" id="fileInput" accept="image/*" style="display:none;" />
         <img id="uploadPreview" alt="upload preview" />
-        <!-- The public-URL field is gone: GCV WEB_DETECTION (the primary
-             backend) accepts raw image bytes, so no hosted copy is needed.
-             It only ever existed for the SerpApi fallback, which cannot
-             take bytes. Kept as a hidden input so the SerpApi path still
-             works if someone forces WEB_DETECT_BACKEND=serpapi. -->
         <input type="hidden" id="publicUrlInput" value="" />
         <button id="uploadBtn" class="primary" disabled>Scan uploaded image</button>
       </div>
@@ -259,64 +773,124 @@
         </div>
       </details>
 
-      <!-- G4 (6 Sep 2026): anchor/verify/tamper. Same pipeline.chain.*
-           functions as `python -m pipeline anchor/verify` — clicking
-           beats switching to a terminal and hand-editing JSON on a
-           single-take recording. -->
-      <div id="chainPanel" style="display:none; margin-top:22px; padding-top:18px;">
-        <h2>3. Blockchain — anchor &amp; re-verify</h2>
-        <div class="btn-row">
-          <button id="anchorBtn" class="primary">Anchor on chain</button>
-          <button id="verifyBtn" class="secondary" disabled>Verify</button>
-          <button id="tamperBtn" class="danger" disabled>Tamper &amp; re-verify</button>
+      <!-- Section 3: Blockchain — Anchor, Verify & Tamper -->
+      <div id="chainPanel" style="margin-top:22px; padding-top:18px; border-top:1px solid var(--border);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+          <h2 style="margin:0;">3. Blockchain — Anchor, Verify &amp; Tamper</h2>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <label for="runsSelect" style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.08em;">Select Run:</label>
+            <select id="runsSelect" style="background:var(--panel-alt); color:var(--text); border:1px solid var(--border); border-radius:5px; padding:5px 10px; font-size:12px; min-width:250px; font-family:var(--mono);">
+              <option value="">Loading past runs...</option>
+            </select>
+            <button id="refreshRunsBtn" class="cyber-btn ghost" style="padding:5px 10px; font-size:11px;" type="button">Refresh</button>
+          </div>
         </div>
-        <div id="chainStatus" style="font-size:13px; color:var(--text-dim); margin-top:10px;"></div>
-        <div id="chainResult" style="margin-top:10px; font-family: ui-monospace, monospace; font-size:12px; white-space:pre-wrap; color:var(--text-dim);"></div>
-      </div>
-    </div>
-  </div>
 
-  <!-- T2.4 (7 Sep 2026): Evidence Explorer. Always visible on page load,
-       allowing past runs (like the committed sample runs) to be inspected, verified,
-       and tamper-tested in all 3 modes without running a new search first. -->
-  <div class="panel" style="margin-top:24px;" id="explorerPanel">
-    <h2>3. Evidence Explorer — historical runs &amp; tamper testing</h2>
-    <div style="display:flex; gap:12px; align-items:center; margin-bottom:14px; flex-wrap:wrap;">
-      <label for="runsSelect" style="font-size:13px; color:var(--text-dim);">Select Past Run:</label>
-      <select id="runsSelect" style="background:var(--panel-alt); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:6px 12px; font-size:13px; min-width:280px;">
-        <option value="">Loading past runs...</option>
-      </select>
-      <button id="refreshRunsBtn" style="width:auto; margin-top:0; padding:6px 14px;">Refresh List</button>
-    </div>
-
-    <div id="selectedRunCard" style="display:none; background:var(--panel-alt); border:1px solid var(--border); border-radius:8px; padding:16px;">
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
-        <div>
-          <h3 id="expRunId" style="margin:0 0 6px; font-size:15px; font-family:ui-monospace, monospace;">—</h3>
-          <div id="expMeta" style="font-size:13px; color:var(--text-dim);"></div>
+        <!-- Top Action Buttons -->
+        <div class="btn-row" style="margin-bottom:14px;">
+          <button id="anchorBtn" class="cyber-btn anchor-btn-top" style="flex:1;">Anchor on chain</button>
+          <button id="verifyBtn" class="cyber-btn verify-btn-top" style="flex:1;">Verify</button>
+          <button id="tamperBtn" class="break tamper-btn-top" style="flex:1;">Tamper &amp; re-verify</button>
         </div>
-        <div id="expVerdictBadge"></div>
-      </div>
+        <div id="chainStatus" style="font-size:13px; color:var(--text-dim); margin-bottom:12px;"></div>
 
-      <div style="margin:14px 0;">
-        <h4 style="font-size:12px; text-transform:uppercase; color:var(--text-dim); margin:0 0 8px;">Artifacts On Disk</h4>
-        <table id="expArtifactsTable" style="margin-bottom:14px;">
-          <thead>
-            <tr><th>File</th><th>Size</th><th>SHA-256 Digest</th><th>Status</th></tr>
-          </thead>
-          <tbody id="expArtifactsBody"></tbody>
-        </table>
-      </div>
+        <div id="noRunNotice" class="empty" style="margin-top:14px; font-weight:600;">
+          No run selected. Choose a past run from the dropdown above or perform a face scan to inspect artifacts and on-chain verification.
+        </div>
 
-      <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
-        <button id="expVerifyBtn" class="secondary" style="width:auto; margin-top:0;">Verify Against Chain</button>
-        <button id="expTamperArtifactBtn" class="danger" style="width:auto; margin-top:0;">Tamper Mode 1: Swap Artifact</button>
-        <button id="expTamperBundleBtn" class="danger" style="width:auto; margin-top:0;">Tamper Mode 2: Edit Bundle</button>
-        <button id="expTamperForgeBtn" class="danger" style="width:auto; margin-top:0;">Tamper Mode 3: Forge Bundle</button>
-      </div>
+        <!-- Active Run Card Display -->
+        <div id="activeRunContainer" style="display:none;">
+          <!-- Card: Run Artifacts -->
+          <div class="chain-card" id="cardArtifacts">
+            <h3>Run Artifacts &amp; Images</h3>
+            <div class="body">
+              <div id="expGallery" class="gallery"></div>
+              <table id="expArtifactsTable" style="margin-top:8px;">
+                <thead>
+                  <tr><th>File</th><th>Size</th><th>SHA-256 Digest</th></tr>
+                </thead>
+                <tbody id="expArtifactsBody"></tbody>
+              </table>
+            </div>
+          </div>
 
-      <div id="expActionStatus" style="margin-top:12px; font-size:13px; color:var(--text-dim);"></div>
-      <div id="expActionResult" style="margin-top:8px; font-family:ui-monospace, monospace; font-size:12px; white-space:pre-wrap; background:#0d1117; padding:10px; border-radius:6px; border:1px solid var(--border); display:none;"></div>
+          <!-- Card: evidence.json — edit to tamper -->
+          <div class="chain-card warn" id="cardEvidence">
+            <h3>evidence.json — edit to tamper</h3>
+            <div class="body">
+              <div style="font-size:11.5px; color:var(--text-dim); line-height:1.6; margin-bottom:10px;">
+                Change post_url, author_handle, cosine_similarity, or captured_at, then Verify. Verify saves this box first, so you do not have to click Save. File hashes are filled in from the photos and post text and are not editable here.
+              </div>
+              <textarea id="evidenceJsonArea" class="json-textarea" spellcheck="false" placeholder="Select a run to load evidence.json..."></textarea>
+              <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; align-items:center;">
+                <button id="saveEditBtn" class="cyber-btn" type="button">SAVE EDIT</button>
+                <button id="restoreEditBtn" class="cyber-btn ghost" type="button">RESTORE ORIGINAL</button>
+                <button id="presetScoreBtn" class="cyber-btn ghost" type="button">🎯 Alter Score to 0.9999</button>
+                <button id="presetUrlBtn" class="cyber-btn ghost" type="button">🎯 Alter Post URL</button>
+                <button id="presetResetBtn" class="cyber-btn ghost" type="button">🔄 Reset Clean Copy</button>
+              </div>
+              <div id="bundleHashDisplay" style="margin-top:10px; font-size:11.5px; color:var(--text-dim); font-family:var(--mono);">
+                current bundle hash <span id="currentBundleHash" class="hash">—</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card: Anchored On-Chain (matches user screenshot media_1788788835671.png) -->
+          <div class="chain-card ok" id="cardAnchor">
+            <h3 id="anchorCardTitle">ANCHORED ON-CHAIN</h3>
+            <div class="body">
+              <dl class="kv" id="anchorKv">
+                <dt>Network</dt><dd id="ancNetwork">anvil (local chain 31337)</dd>
+                <dt>Contract</dt><dd id="ancContract" class="hash">—</dd>
+                <dt>Record id</dt><dd id="ancRecordId">—</dd>
+                <dt>Transaction</dt><dd id="ancTx" class="hash">—</dd>
+                <dt>Evidence hash</dt><dd id="ancEvidenceHash" class="hash">—</dd>
+                <dt>Run directory</dt><dd id="ancRunDir">—</dd>
+              </dl>
+              <div id="anchorActionRow" style="margin-top:14px; display:none;">
+                <button id="doAnchorBtn" class="cyber-btn" type="button">ANCHOR ON CHAIN</button>
+                <span id="anchorActionNote" style="margin-left:12px; font-size:12px; color:var(--text-dim);"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card: Re-Verification (matches user screenshot media_1788788835671.png) -->
+          <div class="chain-card" id="cardVerify">
+            <h3>RE-VERIFICATION</h3>
+            <div class="body">
+              <p id="verifyIntroText" style="margin:0 0 12px; color:var(--text); font-size:12.5px;">
+                Press verify to read the on-chain hash and recompute it from the current files.
+              </p>
+              <div style="margin-bottom:12px;">
+                <button id="doVerifyBtn" class="cyber-btn" type="button">VERIFY AGAINST CHAIN</button>
+              </div>
+              <div id="verifyResultArea" style="display:none; margin-top:12px;">
+                <dl class="kv">
+                  <dt>On-chain</dt><dd id="verOnchainHash" class="hash">—</dd>
+                  <dt>Recomputed from disk</dt><dd id="verRecomputedHash" class="hash">—</dd>
+                </dl>
+                <div id="verVerdictBadge" class="verdict ok" style="margin-top:12px;">MATCH — record intact</div>
+              </div>
+              <div class="explain">
+                <strong>What this proves:</strong> the hash read back from the blockchain equals a hash recomputed from the artifact files on disk. Edit the boxes above and press verify — the current text is saved first.
+              </div>
+            </div>
+          </div>
+
+          <!-- Card: Scratch Tamper Test (matches user screenshot media_1788788835671.png) -->
+          <div class="chain-card warn" id="cardTamper">
+            <h3>SCRATCH TAMPER TEST</h3>
+            <div class="body">
+              <div class="seal" id="sealContainer">
+                <div class="warn-title">OPTIONAL — DOES NOT TOUCH THE FILES ABOVE</div>
+                <p>This flips one byte of the post-text file on a scratch copy and re-checks it against the blockchain. Use the editor above if you want to tamper the real artifact and verify it yourself.</p>
+                <button id="breakSealBtn" class="break" type="button">BREAK THE SEAL</button>
+                <div class="note" id="sealNote">Nothing happens until you press this.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 

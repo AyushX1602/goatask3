@@ -30,7 +30,7 @@ from pipeline.chain.reverify import ReverifyReport, reverify_bundle
 from pipeline.evidence.artifacts import ArtifactCheck, extract_artifact_manifest
 from pipeline.evidence.canonical import canonical_bytes
 
-VALID_TAMPER_MODES = ("swap-artifact", "edit-bundle", "forge-bundle")
+VALID_TAMPER_MODES = ("swap-artifact", "edit-bundle", "forge-bundle", "custom-edit")
 
 
 @dataclass(frozen=True)
@@ -50,6 +50,7 @@ def tamper_run(
     run_dir: Path,
     mode: str = "swap-artifact",
     client: EvmClient | None = None,
+    custom_content: str | bytes | None = None,
 ) -> TamperReport:
     """Copies run_dir to an isolated temp directory, applies the specified tamper
     mutation, runs reverify_bundle on the scratch copy, and cleans up.
@@ -170,6 +171,36 @@ def tamper_run(
             tampered_target = "run.run_id"
             original_value = orig_run_id
             tampered_value = forged_run_id
+
+        elif mode == "custom-edit":
+            if custom_content is None:
+                return TamperReport(
+                    mode=mode,
+                    overall="ERROR",
+                    detail="no custom content provided for custom-edit tamper",
+                    recomputed_hash="",
+                    anchored_hash=expected_hash,
+                    tampered_target="evidence.json",
+                    original_value="",
+                    tampered_value="",
+                )
+            raw_bytes = custom_content.encode("utf-8") if isinstance(custom_content, str) else custom_content
+            tampered_target = "evidence.json"
+            original_value = "original bundle"
+            tampered_value = f"user edit ({len(raw_bytes)} bytes)"
+            try:
+                edited_obj = json.loads(raw_bytes)
+                scratch_bundle.write_bytes(canonical_bytes(edited_obj))
+                diffs = []
+                for k in set(bundle_data.keys()).union(edited_obj.keys()):
+                    if bundle_data.get(k) != edited_obj.get(k):
+                        diffs.append(k)
+                if diffs:
+                    tampered_target = ", ".join(diffs[:3])
+                    original_value = str(bundle_data.get(diffs[0]))[:50]
+                    tampered_value = str(edited_obj.get(diffs[0]))[:50]
+            except Exception:
+                scratch_bundle.write_bytes(raw_bytes)
 
         # 3. Re-verify the scratch directory
         report: ReverifyReport = reverify_bundle(

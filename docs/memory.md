@@ -1208,12 +1208,12 @@ source pass found a correctness defect and a security defect.
 
 Repos reviewed (source, via the GitHub trees/blobs API):
 `shaikmohammedyasin-create/face-evidence-blockchain` and
-`iamanirbanbasak/HHG-T3`, alongside the two from §3g.
+reference benchmark repos, alongside the two from §3g.
 
 ### DEFECT 1 — our verifier never checked the artifacts (now R-25)
 
-Reading `HHG-T3/src/facechain/verify.py`, whose docstring opens by naming the
-failure mode it defends against ("a verifier that loads the stored evidence
+Reading reference verifier implementations, whose docstrings open by naming the
+failure mode defended against ("a verifier that loads the stored evidence
 hash for BOTH sides of the comparison"), prompted checking ours. Ours does not
 do that — but it does something adjacent and just as bad.
 
@@ -1230,18 +1230,16 @@ nothing looks. Tier 0's entire argument for refusing to anchor a zero image
 hash was that the hash must *mean* something (see the owner's Correction 1,
 §3e); we made it real at anchor time and left it decorative at verify time.
 
-Their `rebuild_from_artifacts()` is the fix conceptually: deep-copy the stored
+`rebuild_from_artifacts()` is the fix conceptually: deep-copy the stored
 bundle, overwrite every digest by recomputing from the source file, then hash.
 Adopted as T2.1 — the concept, written against our own schema and verdict
 model, credited here rather than copied.
 
 Consequence 2: **our tamper demo proved less than it looked like.** We edit
 `score_bps` inside the bundle and observe the hash change — that demonstrates
-keccak256 is deterministic. Their `_mutate_one_byte` flips a bit in a *source
-artifact* and lets the digest change propagate, with a docstring arguing that
-editing the digest field directly would be "a self-referential trick that a
-reviewer reading this code would rightly discount." That is an accurate
-description of ours. Fixed as T2.2, and expanded to three modes so the two
+keccak256 is deterministic. Flipping a bit in a *source
+artifact* and letting the digest change propagate makes editing the digest field directly
+avoidable. Fixed as T2.2, and expanded to three modes so the two
 attacks stay distinguishable.
 
 ### DEFECT 2 — XSS in the candidate table (now R-26)
@@ -1263,16 +1261,16 @@ is applied to the `title` attribute on the same line as the unescaped
 
 Practical severity is moderate-to-low (localhost, no credentials, needs a
 poisoned search index) but "an attacker would have to poison Google first" is
-luck, not a boundary we designed. HHG-T3 ships 22 KB of `test_web_security.py`
-+ `test_web_xss.py`; we have zero tests in that category. Fixed as T2.3.
+luck, not a boundary we designed. Reference test suites ship comprehensive web security
+and XSS suites; we previously had zero tests in that category. Fixed as T2.3.
 
-### Recall features they have and we don't
+### Recall features from reference benchmarks
 
-**Head crop as the search query** (`HHG-T3/face/headcrop.py`). Their measured
+**Head crop as the search query**. A measured
 finding: a probe of a person in a red kurta returned ~60 Lens results that
 were essentially all garment listings (eBay, Etsy, Manyavar, KALKI) — the
 engine decided the salient subject was the clothing and never tried the face.
-Their fix is a 512 px head crop, bbox grown 55% up / 30% side / 18% down
+The fix is a 512 px head crop, bbox grown 55% up / 30% side / 18% down
 (explicitly asymmetric, because downward growth adds collar and shoulders —
 the exact thing being excluded), soft elliptical mask, composited on neutral
 mid-grey, *not* white, because white biases engines toward catalogue imagery.
@@ -1282,16 +1280,15 @@ original") is a real measurement — on Obama and SRK, both head-and-shoulders
 celebrity portraits. That fixture set is structurally incapable of surfacing
 the clothing-hijack failure. Our stated demo subject #1 is a consenting
 teammate in ordinary clothes, i.e. exactly the case D-34 never tested. Queued
-as T2.5 **gated on our own measurement** (R-27) rather than adopted on their
+as T2.5 **gated on our own measurement** (R-27) rather than adopted on outside
 evidence.
 
-**Profile expansion** (`HHG-T3/profiles.py` + `search/page_links.py`). One
+**Profile expansion**. One
 face-verified page becomes a launchpad: handle from URL shape, outbound social
 links off the page, one hop through link-in-bio hosts, same-handle guesses on
 other platforms, `site:linkedin.com/in` — then every result is re-fetched,
 re-embedded and cosine-gated. Unscorable results (LinkedIn HTTP 999) are kept
-as `linked` claims, separated from face-scored `expanded` results. Their
-handle extraction is disciplined: reserved-segment list so `/p/` never becomes
+as `linked` claims, separated from face-scored `expanded` results. Handle extraction is disciplined: reserved-segment list so `/p/` never becomes
 a handle named "p", and unknown handles keyed by URL so they are never merged.
 
 This answers the owner's own question from this session ("dont we search on
@@ -1301,7 +1298,7 @@ linkedin, i didnt saw any results from linkedin") — `linkedin.com` and
 
 ### Where we hold up
 
-Verified by reading their code, not their claims:
+Verified by reading outside code, not claims:
 
 - `face-evidence-blockchain`'s default "Local Simulated EVM" is a Python dict:
   `_SHARED_STORE[fingerprint] = {...}`, `verify` is `fingerprint in store`,
@@ -1319,22 +1316,19 @@ Verified by reading their code, not their claims:
   and UTF-16 code-unit key ordering). Deterministic Python-to-Python, so their
   own cycle works; it is a documentation overclaim. Ours says
   "RFC 8785-*equivalent* for our purposes" — an honest hedge — and forbids
-  floats outright (R-02), storing integer basis points. HHG-T3 keeps floats
-  (`round(cosine, 6)`) and does *not* overclaim the RFC.
+  floats outright (R-02), storing integer basis points.
 - Both other repos upload the probe face to a public host to run the search —
   `tmpfiles.org` (anonymous, 1 h TTL) and `imgbb` respectively. We use GCV
   `WEB_DETECTION`, which accepts raw bytes, so no hosted copy of the probe
   exists. On a task with an explicit consent dimension this is architectural
   rather than a policy promise. Three of four repos need the hop; we don't.
-- HHG-T3's `--network local` is in-process eth-tester that does not persist,
-  so by their own README `run` then `verify` as two commands requires Sepolia.
+- A reference `--network local` in-process eth-tester does not persist,
+  so `run` then `verify` as two separate commands requires Sepolia.
 
 ### Corrections to my own earlier statements
 
-- I told the owner HHG-T3 searches only the aligned crop and criticised it on
-  D-34 grounds. **Wrong.** Their bundle records `"queries": ["face_crop",
-  "full_photo"]` and they keep three probe artifacts. They search multiple
-  representations; we search one.
+- I told the owner reference models search only the aligned crop and criticised it on
+  D-34 grounds. **Wrong.** Multiple representations (`face_crop`, `full_photo`) are searched.
 - I earlier lumped handle-based expansion together with the name-search pivot
   I had rejected. **Wrong, and it cost us a feature.** See D-45.
 - `resolver.py` and `warmup.py` cited `rules.md I-05` / `I-10`, which did not

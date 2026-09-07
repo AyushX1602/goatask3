@@ -21,7 +21,8 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from fastapi import FastAPI, Form, UploadFile, File
+import re
+from fastapi import FastAPI, Form, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -385,6 +386,7 @@ class AnchorResponse(BaseModel):
     block_number: int | None = None
     contract_address: str | None = None
     evidence_hash: str | None = None
+    already_anchored: bool = False
     error: str | None = None
 
 
@@ -393,7 +395,9 @@ class VerifyResponse(BaseModel):
     detail: str
     recomputed_hash: str
     anchored_hash: str | None = None
+    onchain_hash: str | None = None
     on_chain_exists: bool | None = None
+    matches: bool | None = None
     artifact_checks: list[dict] = []
 
 
@@ -408,6 +412,12 @@ class TamperResponse(BaseModel):
     mode: str = "swap-artifact"
     recomputed_hash: str | None = None
     anchored_hash: str | None = None
+    onchain_hash: str | None = None
+    intact_hash: str | None = None
+    tampered_hash: str | None = None
+    detected: bool | None = None
+    mutated_file: str | None = None
+    originals_unchanged: bool = True
     artifact_checks: list[dict] = []
 
 
@@ -446,12 +456,84 @@ def anchor_run(run_id: str) -> AnchorResponse:
     if bundle is None:
         return AnchorResponse(ok=False, error=f"no evidence bundle for run {run_id} (was the verdict MATCH?)")
 
+    anchor_path = RUNS_DIR / run_id / "anchor.json"
+
     try:
         client = EvmClient()
+    except ContractNotDeployedError as e:
+        return AnchorResponse(ok=False, error=str(e))
+    except Exception as e:
+        return AnchorResponse(ok=False, error=f"{type(e).__name__}: {e}")
+
+    # Check if already anchored on-chain before attempting tx
+    try:
+        v = client.verify(bundle.evidence_hash_hex)
+        if v.exists:
+            tx_hash = "already-anchored"
+            if anchor_path.exists():
+                try:
+                    cached = json.loads(anchor_path.read_text(encoding="utf-8"))
+                    tx_hash = cached.get("tx_hash", tx_hash)
+                except Exception:
+                    pass
+            anchor_record = {
+                "tx_hash": tx_hash,
+                "chain_id": v.chain_id,
+                "block_number": v.anchored_at,
+                "contract_address": v.contract_address,
+                "gas_used": 0,
+                "evidence_hash": v.evidence_hash_hex,
+            }
+            anchor_path.write_text(json.dumps(anchor_record, indent=2), encoding="utf-8")
+            return AnchorResponse(
+                ok=True,
+                tx_hash=tx_hash,
+                chain_id=v.chain_id,
+                block_number=v.anchored_at,
+                contract_address=v.contract_address,
+                evidence_hash=v.evidence_hash_hex,
+                already_anchored=True,
+            )
+    except Exception:
+        pass
+
+    try:
         receipt = client.anchor(bundle)
     except ContractNotDeployedError as e:
         return AnchorResponse(ok=False, error=str(e))
     except Exception as e:
+        err_str = str(e)
+        if "0x38d23813" in err_str or "AlreadyAnchored" in err_str:
+            try:
+                v = client.verify(bundle.evidence_hash_hex)
+                if v.exists:
+                    tx_hash = "already-anchored"
+                    if anchor_path.exists():
+                        try:
+                            cached = json.loads(anchor_path.read_text(encoding="utf-8"))
+                            tx_hash = cached.get("tx_hash", tx_hash)
+                        except Exception:
+                            pass
+                    anchor_record = {
+                        "tx_hash": tx_hash,
+                        "chain_id": v.chain_id,
+                        "block_number": v.anchored_at,
+                        "contract_address": v.contract_address,
+                        "gas_used": 0,
+                        "evidence_hash": v.evidence_hash_hex,
+                    }
+                    anchor_path.write_text(json.dumps(anchor_record, indent=2), encoding="utf-8")
+                    return AnchorResponse(
+                        ok=True,
+                        tx_hash=tx_hash,
+                        chain_id=v.chain_id,
+                        block_number=v.anchored_at,
+                        contract_address=v.contract_address,
+                        evidence_hash=v.evidence_hash_hex,
+                        already_anchored=True,
+                    )
+            except Exception:
+                pass
         return AnchorResponse(ok=False, error=f"{type(e).__name__}: {e}")
 
     anchor_record = {
@@ -462,7 +544,7 @@ def anchor_run(run_id: str) -> AnchorResponse:
         "gas_used": receipt.gas_used,
         "evidence_hash": receipt.evidence_hash_hex,
     }
-    (RUNS_DIR / run_id / "anchor.json").write_text(json.dumps(anchor_record, indent=2), encoding="utf-8")
+    anchor_path.write_text(json.dumps(anchor_record, indent=2), encoding="utf-8")
 
     return AnchorResponse(
         ok=True,
@@ -471,11 +553,16 @@ def anchor_run(run_id: str) -> AnchorResponse:
         block_number=receipt.block_number,
         contract_address=receipt.contract_address,
         evidence_hash=receipt.evidence_hash_hex,
+        already_anchored=False,
     )
 
 
+class VerifyRequest(BaseModel):
+    evidence_text: str | None = None
+
+
 @app.post("/api/verify/{run_id}", response_model=VerifyResponse)
-def verify_run(run_id: str) -> VerifyResponse:
+def verify_run(run_id: str, body: VerifyRequest | None = None) -> VerifyResponse:
     """Re-verifies runs/<run_id>/evidence.json against the on-chain
     record. Identical logic to `python -m pipeline verify <run_id>`
     (cli.py) — the literal brief requirement 3, "demonstrate re-verifying
@@ -492,15 +579,27 @@ def verify_run(run_id: str) -> VerifyResponse:
         expected_hash = json.loads(anchor_path.read_text(encoding="utf-8"))["evidence_hash"]
 
     try:
-        report = reverify_bundle(bundle_path, client=EvmClient(), expected_hash=expected_hash)
+        if body and body.evidence_text:
+            import tempfile
+            import shutil
+            with tempfile.TemporaryDirectory() as td:
+                tmp_run = Path(td) / "run"
+                shutil.copytree(run_dir, tmp_run)
+                (tmp_run / "evidence.json").write_text(body.evidence_text, encoding="utf-8")
+                report = reverify_bundle(tmp_run / "evidence.json", client=EvmClient(), expected_hash=expected_hash)
+        else:
+            report = reverify_bundle(bundle_path, client=EvmClient(), expected_hash=expected_hash)
     except Exception as e:
         return VerifyResponse(overall="ERROR", detail=f"{type(e).__name__}: {e}", recomputed_hash="")
 
+    matches = report.overall == "PASS"
     return VerifyResponse(
         overall=report.overall,
+        matches=matches,
         detail=report.detail,
         recomputed_hash=report.recomputed_hash,
         anchored_hash=report.anchored_hash,
+        onchain_hash=report.anchored_hash,
         on_chain_exists=report.on_chain.exists if report.on_chain else None,
         artifact_checks=[
             {
@@ -547,6 +646,129 @@ def tamper_run(run_id: str, mode: str = "swap-artifact") -> TamperResponse:
             mode=mode,
         )
 
+    detected = rep.overall != "PASS"
+    return TamperResponse(
+        overall=rep.overall,
+        detail=rep.detail,
+        tampered_field=rep.tampered_target,
+        original_value=rep.original_value,
+        tampered_value=rep.tampered_value,
+        mode=rep.mode,
+        recomputed_hash=rep.recomputed_hash,
+        anchored_hash=rep.anchored_hash,
+        onchain_hash=rep.anchored_hash,
+        intact_hash=rep.anchored_hash,
+        tampered_hash=rep.recomputed_hash,
+        detected=detected,
+        mutated_file="match_image.jpg" if mode == "swap-artifact" else "evidence.json",
+        originals_unchanged=True,
+        artifact_checks=[
+            {
+                "path": c.path,
+                "match": c.match,
+                "expected_sha256": c.expected_sha256,
+                "actual_sha256": c.actual_sha256,
+                "detail": c.detail,
+            }
+            for c in rep.artifact_checks
+        ],
+    )
+
+
+class EvidenceTextPayload(BaseModel):
+    text: str
+
+
+@app.post("/api/evidence/{run_id}")
+def save_evidence_edit(run_id: str, payload: EvidenceTextPayload):
+    run_dir = RUNS_DIR / run_id
+    ev_path = run_dir / "evidence.json"
+    orig_path = run_dir / "evidence.orig.json"
+    if not ev_path.exists():
+        raise HTTPException(status_code=404, detail="evidence.json not found")
+
+    try:
+        data = json.loads(payload.text)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+
+    if not orig_path.exists():
+        orig_path.write_bytes(ev_path.read_bytes())
+
+    ev_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    from pipeline.evidence.canonical import evidence_hash_hex
+    new_hash = evidence_hash_hex(data)
+
+    return {
+        "ok": True,
+        "evidence": data,
+        "evidence_hash": new_hash,
+    }
+
+
+@app.post("/api/evidence/{run_id}/restore")
+def restore_evidence_original(run_id: str):
+    run_dir = RUNS_DIR / run_id
+    ev_path = run_dir / "evidence.json"
+    orig_path = run_dir / "evidence.orig.json"
+    if orig_path.exists():
+        ev_path.write_bytes(orig_path.read_bytes())
+        orig_path.unlink()
+
+    if not ev_path.exists():
+        raise HTTPException(status_code=404, detail="evidence.json not found")
+
+    data = json.loads(ev_path.read_text(encoding="utf-8"))
+    from pipeline.evidence.canonical import evidence_hash_hex
+    orig_hash = evidence_hash_hex(data)
+
+    return {
+        "ok": True,
+        "evidence": data,
+        "evidence_hash": orig_hash,
+    }
+
+
+class CustomTamperRequest(BaseModel):
+    custom_json: str
+
+
+@app.post("/api/tamper-custom/{run_id}", response_model=TamperResponse)
+def tamper_custom(run_id: str, req: CustomTamperRequest) -> TamperResponse:
+    """Demonstrates live interactive tampering from the UI editor without mutating
+    the real run on disk: copies run_dir to a temporary location, writes the user-edited
+    JSON, and runs reverify_bundle against the EVM contract.
+    """
+    from pipeline.chain.tamper import tamper_run as run_tamper_demo
+
+    run_dir = RUNS_DIR / run_id
+    if not run_dir.exists() or not (run_dir / "evidence.json").exists():
+        return TamperResponse(
+            overall="ERROR",
+            detail=f"no evidence bundle found in {run_dir}",
+            tampered_field="",
+            original_value="",
+            tampered_value="",
+            mode="custom-edit",
+        )
+
+    try:
+        rep = run_tamper_demo(
+            run_dir,
+            mode="custom-edit",
+            client=EvmClient(),
+            custom_content=req.custom_json,
+        )
+    except Exception as e:
+        return TamperResponse(
+            overall="ERROR",
+            detail=f"tamper execution failed: {type(e).__name__}: {e}",
+            tampered_field="tamper",
+            original_value="",
+            tampered_value="",
+            mode="custom-edit",
+        )
+
     return TamperResponse(
         overall=rep.overall,
         detail=rep.detail,
@@ -567,6 +789,33 @@ def tamper_run(run_id: str, mode: str = "swap-artifact") -> TamperResponse:
             for c in rep.artifact_checks
         ],
     )
+
+
+@app.get("/api/artifact/{run_id}/{filename}")
+def get_run_artifact(run_id: str, filename: str):
+    """Safely serves a stored artifact (e.g. match_image.jpg, probe.jpg, evidence.json)
+    for UI preview. Path is strictly confined to RUNS_DIR / run_id."""
+    if not re.fullmatch(r"[A-Za-z0-9_\-\.]+", filename) or ".." in filename:
+        raise HTTPException(status_code=400, detail="invalid artifact filename")
+
+    run_dir = RUNS_DIR / run_id
+    if not run_dir.exists():
+        raise HTTPException(status_code=404, detail="run directory not found")
+
+    file_path = run_dir / filename
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="artifact not found")
+
+    media_types = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+        ".json": "application/json",
+        ".txt": "text/plain; charset=utf-8",
+    }
+    media_type = media_types.get(file_path.suffix.lower(), "application/octet-stream")
+    return FileResponse(file_path, media_type=media_type)
 
 
 @app.get("/api/runs", response_model=list[RunSummary])

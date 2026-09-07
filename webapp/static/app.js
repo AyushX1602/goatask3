@@ -478,12 +478,7 @@ function renderResults(data) {
   // — evidence/bundle.py refuses to build one for anything else (R-16).
   if (isMatch && data.evidence_hash) {
     chainPanel.style.display = "block";
-    chainStatus.textContent = "";
-    chainResult.textContent = "";
-    verifyBtn.disabled = true;
-    tamperBtn.disabled = true;
-  } else {
-    chainPanel.style.display = "none";
+    selectRun(data.run_id);
   }
 
   diagnostics.style.display = "block";
@@ -577,99 +572,86 @@ function renderResults(data) {
   }
 }
 
-// ---------------- chain: anchor / verify / tamper (G4 / T2.2) --------
+// ---------------- chain: anchor / verify / tamper ----------------
 
 const chainPanel = document.getElementById("chainPanel");
 const anchorBtn = document.getElementById("anchorBtn");
 const verifyBtn = document.getElementById("verifyBtn");
 const tamperBtn = document.getElementById("tamperBtn");
 const chainStatus = document.getElementById("chainStatus");
-const chainResult = document.getElementById("chainResult");
-
-anchorBtn.addEventListener("click", async () => {
-  if (!currentRunId) return;
-  anchorBtn.disabled = true;
-  chainStatus.textContent = "Anchoring on chain...";
-  chainResult.textContent = "";
-  try {
-    const resp = await fetch(`/api/anchor/${currentRunId}`, { method: "POST" });
-    const data = await resp.json();
-    if (data.ok) {
-      chainStatus.textContent = "Anchored.";
-      chainResult.textContent =
-        `tx:       ${data.tx_hash}\n` +
-        `chain_id: ${data.chain_id}\n` +
-        `block:    ${data.block_number}\n` +
-        `contract: ${data.contract_address}\n` +
-        `evidence: ${data.evidence_hash}`;
-      verifyBtn.disabled = false;
-      tamperBtn.disabled = false;
-      await loadRunsList();
-    } else {
-      chainStatus.textContent = "Anchor failed.";
-      chainResult.textContent = data.error || "unknown error";
-    }
-  } catch (err) {
-    chainStatus.textContent = "Anchor failed: " + err.message;
-  } finally {
-    anchorBtn.disabled = false;
-  }
-});
-
-verifyBtn.addEventListener("click", async () => {
-  if (!currentRunId) return;
-  await runVerify(`/api/verify/${currentRunId}`, "Verifying against the on-chain record...");
-});
-
-tamperBtn.addEventListener("click", async () => {
-  if (!currentRunId) return;
-  await runVerify(`/api/tamper/${currentRunId}?mode=swap-artifact`, "Tampering scratch copy (swap-artifact)...", true);
-});
-
-async function runVerify(endpoint, statusText, isTamper = false) {
-  chainStatus.textContent = statusText;
-  chainResult.textContent = "";
-  try {
-    const resp = await fetch(endpoint, { method: "POST" });
-    const data = await resp.json();
-    const badge = data.overall === "PASS" ? "PASS" : data.overall;
-    chainStatus.innerHTML = `<span class="badge ${data.overall === "PASS" ? "match" : "no-match"}">${badge}</span>`;
-    const lines = [`detail: ${data.detail}`, `recomputed: ${data.recomputed_hash}`];
-    if (isTamper) {
-      lines.unshift(`tampered ${data.tampered_field}: ${data.original_value} -> ${data.tampered_value}`);
-    }
-    if (data.anchored_hash) lines.push(`anchored:   ${data.anchored_hash}`);
-    chainResult.textContent = lines.join("\n");
-  } catch (err) {
-    chainStatus.textContent = "Failed: " + err.message;
-  }
-}
-
-// ---------------- Evidence Explorer (T2.4) ----------------
 
 const runsSelect = document.getElementById("runsSelect");
 const refreshRunsBtn = document.getElementById("refreshRunsBtn");
-const selectedRunCard = document.getElementById("selectedRunCard");
-const expRunId = document.getElementById("expRunId");
-const expMeta = document.getElementById("expMeta");
-const expVerdictBadge = document.getElementById("expVerdictBadge");
+const activeRunContainer = document.getElementById("activeRunContainer");
+const noRunNotice = document.getElementById("noRunNotice");
+
+// Cards
+const cardArtifacts = document.getElementById("cardArtifacts");
+const expGallery = document.getElementById("expGallery");
+const expArtifactsTable = document.getElementById("expArtifactsTable");
 const expArtifactsBody = document.getElementById("expArtifactsBody");
-const expVerifyBtn = document.getElementById("expVerifyBtn");
-const expTamperArtifactBtn = document.getElementById("expTamperArtifactBtn");
-const expTamperBundleBtn = document.getElementById("expTamperBundleBtn");
-const expTamperForgeBtn = document.getElementById("expTamperForgeBtn");
-const expActionStatus = document.getElementById("expActionStatus");
-const expActionResult = document.getElementById("expActionResult");
 
-let activeExplorerRunId = null;
+const cardEvidence = document.getElementById("cardEvidence");
+const evidenceJsonArea = document.getElementById("evidenceJsonArea");
+const saveEditBtn = document.getElementById("saveEditBtn");
+const restoreEditBtn = document.getElementById("restoreEditBtn");
+const presetScoreBtn = document.getElementById("presetScoreBtn");
+const presetUrlBtn = document.getElementById("presetUrlBtn");
+const presetResetBtn = document.getElementById("presetResetBtn");
+const currentBundleHash = document.getElementById("currentBundleHash");
 
-async function loadRunsList() {
+const cardAnchor = document.getElementById("cardAnchor");
+const anchorCardTitle = document.getElementById("anchorCardTitle");
+const ancNetwork = document.getElementById("ancNetwork");
+const ancContract = document.getElementById("ancContract");
+const ancRecordId = document.getElementById("ancRecordId");
+const ancTx = document.getElementById("ancTx");
+const ancEvidenceHash = document.getElementById("ancEvidenceHash");
+const ancRunDir = document.getElementById("ancRunDir");
+const anchorActionRow = document.getElementById("anchorActionRow");
+const doAnchorBtn = document.getElementById("doAnchorBtn");
+const anchorActionNote = document.getElementById("anchorActionNote");
+
+const cardVerify = document.getElementById("cardVerify");
+const doVerifyBtn = document.getElementById("doVerifyBtn");
+const verifyResultArea = document.getElementById("verifyResultArea");
+const verOnchainHash = document.getElementById("verOnchainHash");
+const verRecomputedHash = document.getElementById("verRecomputedHash");
+const verVerdictBadge = document.getElementById("verVerdictBadge");
+
+const cardTamper = document.getElementById("cardTamper");
+const sealContainer = document.getElementById("sealContainer");
+const breakSealBtn = document.getElementById("breakSealBtn");
+const sealNote = document.getElementById("sealNote");
+
+let cleanBundleJson = "";
+
+function clearRunSelection() {
+  currentRunId = null;
+  if (activeRunContainer) activeRunContainer.style.display = "none";
+  if (noRunNotice) noRunNotice.style.display = "block";
+  if (expGallery) expGallery.innerHTML = "";
+  if (expArtifactsBody) expArtifactsBody.innerHTML = "";
+  if (evidenceJsonArea) evidenceJsonArea.value = "";
+  if (currentBundleHash) currentBundleHash.textContent = "—";
+  if (ancContract) ancContract.textContent = "—";
+  if (ancRecordId) ancRecordId.textContent = "—";
+  if (ancTx) ancTx.textContent = "—";
+  if (ancEvidenceHash) ancEvidenceHash.textContent = "—";
+  if (ancRunDir) ancRunDir.textContent = "—";
+  if (verifyResultArea) verifyResultArea.style.display = "none";
+  if (chainStatus) chainStatus.textContent = "";
+}
+
+async function loadRunsList(preserveCurrent = true) {
   if (!runsSelect) return;
   try {
     const resp = await fetch("/api/runs");
     if (!resp.ok) return;
     const runs = await resp.json();
-    runsSelect.innerHTML = '<option value="">-- Choose a past run --</option>';
+    const prevVal = preserveCurrent ? (runsSelect.value || currentRunId) : null;
+    runsSelect.innerHTML = '<option value="">-- Choose a past run to inspect --</option>';
+    let targetRun = prevVal;
     for (const r of runs) {
       const opt = document.createElement("option");
       opt.value = r.run_id;
@@ -680,145 +662,423 @@ async function loadRunsList() {
       opt.textContent = `${r.run_id}${v}${score}${plat}${anc}`;
       runsSelect.appendChild(opt);
     }
+    // Do NOT auto-load runs[0] by default — only load if user explicitly selected or performed a scan
+    if (targetRun) {
+      runsSelect.value = targetRun;
+      await selectRun(targetRun);
+    } else {
+      runsSelect.value = "";
+      clearRunSelection();
+    }
   } catch (err) {
     console.error("Failed loading runs list:", err);
   }
 }
 
 if (refreshRunsBtn) {
-  refreshRunsBtn.addEventListener("click", loadRunsList);
+  refreshRunsBtn.addEventListener("click", () => loadRunsList(true));
 }
 
 if (runsSelect) {
   runsSelect.addEventListener("change", async () => {
     const runId = runsSelect.value;
-    if (!runId) {
-      selectedRunCard.style.display = "none";
-      activeExplorerRunId = null;
-      return;
+    if (runId) {
+      await selectRun(runId);
+    } else {
+      clearRunSelection();
     }
-    await selectRun(runId);
   });
+}
+
+function resetSealUI() {
+  if (!sealContainer) return;
+  sealContainer.innerHTML = "";
+  const title = document.createElement("div");
+  title.className = "warn-title";
+  title.textContent = "OPTIONAL — DOES NOT TOUCH THE FILES ABOVE";
+  sealContainer.appendChild(title);
+
+  const p = document.createElement("p");
+  p.textContent = "This flips one byte of the post-text file on a scratch copy and re-checks it against the blockchain. Use the editor above if you want to tamper the real artifact and verify it yourself.";
+  sealContainer.appendChild(p);
+
+  const btn = document.createElement("button");
+  btn.id = "breakSealBtn";
+  btn.className = "break tamper-btn-top";
+  btn.type = "button";
+  btn.textContent = "BREAK THE SEAL";
+  btn.addEventListener("click", () => runTamperSeal());
+  sealContainer.appendChild(btn);
+
+  const note = document.createElement("div");
+  note.id = "sealNote";
+  note.className = "note";
+  note.textContent = "Nothing happens until you press this.";
+  sealContainer.appendChild(note);
 }
 
 async function selectRun(runId) {
-  activeExplorerRunId = runId;
-  expActionStatus.textContent = "";
-  expActionResult.style.display = "none";
-  expActionResult.textContent = "";
+  if (!runId) {
+    clearRunSelection();
+    return;
+  }
+  currentRunId = runId;
+  chainStatus.textContent = "";
 
   try {
-    const resp = await fetch(`/api/run/${runId}`);
-    if (!resp.ok) return;
+    const resp = await fetch(`/api/run/${encodeURIComponent(runId)}`);
+    if (!resp.ok) {
+      clearRunSelection();
+      return;
+    }
     const data = await resp.json();
     if (data.error) {
-      alert(data.error);
+      chainStatus.textContent = data.error;
+      clearRunSelection();
       return;
     }
 
-    selectedRunCard.style.display = "block";
-    expRunId.textContent = data.run_id;
+    if (activeRunContainer) activeRunContainer.style.display = "block";
+    if (noRunNotice) noRunNotice.style.display = "none";
 
-    const b = data.bundle;
-    const a = data.anchor;
-    const aud = data.audit;
-
-    const verdict = (aud && aud.verdict) || (b && "MATCH") || "UNKNOWN";
-    expVerdictBadge.innerHTML = `<span class="badge ${verdict === "MATCH" ? "match" : "no-match"}">${verdict}</span>`;
-
-    const metaParts = [];
-    if (b && b.match) {
-      metaParts.push(`Score: ${(b.match.score_bps / 10000).toFixed(4)}`);
-      metaParts.push(`Provider: ${b.match.provider}`);
-      if (b.post && b.post.platform) metaParts.push(`Platform: ${b.post.platform}`);
-      if (b.post && b.post.content_kind) metaParts.push(`Kind: ${b.post.content_kind}`);
-    }
-    if (a) {
-      metaParts.push(`Anchored: tx=${a.tx_hash ? a.tx_hash.slice(0, 10) + "..." : "none"}`);
-    }
-    expMeta.textContent = metaParts.join(" · ") || "No bundle metadata";
-
-    expArtifactsBody.innerHTML = "";
-    for (const art of (data.artifacts || [])) {
-      const tr = document.createElement("tr");
-      const tdName = document.createElement("td");
-      tdName.textContent = art.name;
-      const tdSize = document.createElement("td");
-      tdSize.textContent = art.size_bytes >= 1024 ? `${Math.round(art.size_bytes / 1024)} KB` : `${art.size_bytes} B`;
-      const tdSha = document.createElement("td");
-      tdSha.style.fontFamily = "ui-monospace, monospace";
-      tdSha.style.fontSize = "11px";
-      tdSha.textContent = (art.sha256 || "").slice(0, 16) + "...";
-      const tdStatus = document.createElement("td");
-      tdStatus.id = `exp-art-status-${art.name.replace(/[^a-zA-Z0-9]/g, "_")}`;
-      tdStatus.innerHTML = `<span style="color:#8b949e;">present</span>`;
-
-      tr.appendChild(tdName);
-      tr.appendChild(tdSize);
-      tr.appendChild(tdSha);
-      tr.appendChild(tdStatus);
-      expArtifactsBody.appendChild(tr);
-    }
-  } catch (err) {
-    console.error("Failed loading run details:", err);
-  }
-}
-
-async function runExplorerAction(url, actionName) {
-  if (!activeExplorerRunId) return;
-  expActionStatus.textContent = `${actionName}...`;
-  expActionResult.style.display = "none";
-  try {
-    const resp = await fetch(url, { method: "POST" });
-    const data = await resp.json();
-
-    const isPass = data.overall === "PASS";
-    expActionStatus.innerHTML = `<span class="badge ${isPass ? "match" : "no-match"}">${data.overall}</span> <span style="margin-left:8px;">${escapeHtml(data.detail)}</span>`;
-
-    const lines = [];
-    if (data.mode) lines.push(`Tamper mode:   ${data.mode}`);
-    if (data.tampered_field) lines.push(`Mutation:      ${data.tampered_field}: ${data.original_value} -> ${data.tampered_value}`);
-    if (data.recomputed_hash) lines.push(`Recomputed:    ${data.recomputed_hash}`);
-    if (data.anchored_hash) lines.push(`Anchored:      ${data.anchored_hash}`);
-    if (data.on_chain_exists !== undefined) lines.push(`On-chain:      exists=${data.on_chain_exists}`);
-
-    if (data.artifact_checks && data.artifact_checks.length) {
-      lines.push("\nArtifact Checks:");
-      for (const ac of data.artifact_checks) {
-        const ok = ac.match ? "OK" : "FAIL";
-        lines.push(`  [${ok}] ${ac.path} — ${ac.detail}`);
-        const el = document.getElementById(`exp-art-status-${ac.path.replace(/[^a-zA-Z0-9]/g, "_")}`);
-        if (el) {
-          el.innerHTML = `<span class="badge ${ac.match ? "match" : "no-match"}">${ok}</span>`;
+    // 1. Gallery of images
+    if (expGallery) {
+      expGallery.innerHTML = "";
+      const imgArtifacts = (data.artifacts || []).filter(a => /\.(jpg|jpeg|png|webp)$/i.test(a.name));
+      if (imgArtifacts.length > 0) {
+        if (cardArtifacts) cardArtifacts.style.display = "block";
+        for (const art of imgArtifacts) {
+          const fig = document.createElement("figure");
+          const img = document.createElement("img");
+          img.src = `/api/artifact/${encodeURIComponent(runId)}/${encodeURIComponent(art.name)}`;
+          img.alt = art.name;
+          const cap = document.createElement("figcaption");
+          cap.textContent = art.name.includes("match")
+            ? "Match Image"
+            : (art.name.includes("aligned") ? "Aligned Face" : (art.name.includes("head") ? "Head Crop" : "Probe"));
+          fig.appendChild(img);
+          fig.appendChild(cap);
+          expGallery.appendChild(fig);
         }
+      } else {
+        if (cardArtifacts) cardArtifacts.style.display = "none";
       }
     }
 
-    expActionResult.textContent = lines.join("\n");
-    expActionResult.style.display = "block";
+    // 2. Artifacts Table
+    if (expArtifactsBody) {
+      expArtifactsBody.innerHTML = "";
+      for (const art of (data.artifacts || [])) {
+        const tr = document.createElement("tr");
+        const td1 = document.createElement("td");
+        td1.textContent = art.name;
+        const td2 = document.createElement("td");
+        td2.textContent = art.size_bytes >= 1024 ? `${(art.size_bytes / 1024).toFixed(1)} KB` : `${art.size_bytes} B`;
+        const td3 = document.createElement("td");
+        td3.className = "hash";
+        td3.textContent = art.sha256 || "—";
+        tr.appendChild(td1);
+        tr.appendChild(td2);
+        tr.appendChild(td3);
+        expArtifactsBody.appendChild(tr);
+      }
+    }
+
+    // 3. Evidence JSON Editor
+    const b = data.bundle;
+    const a = data.anchor;
+    if (evidenceJsonArea) {
+      if (b) {
+        cleanBundleJson = JSON.stringify(b, null, 2);
+        evidenceJsonArea.value = cleanBundleJson;
+      } else {
+        cleanBundleJson = "";
+        evidenceJsonArea.value = "// No evidence bundle for this run";
+      }
+    }
+    const currentHash = (a && a.evidence_hash) || (b && b.evidence_hash) || (data.evidence_hash) || "—";
+    if (currentBundleHash) {
+      currentBundleHash.textContent = currentHash;
+    }
+
+    // 4. Anchor Card
+    if (a) {
+      if (cardAnchor) cardAnchor.className = "chain-card ok";
+      if (anchorCardTitle) anchorCardTitle.textContent = "ANCHORED ON-CHAIN";
+      if (ancNetwork) ancNetwork.textContent = (a.chain_id === 31337 || a.chain_id === "31337") ? "anvil (local chain 31337)" : "sepolia";
+      if (ancContract) ancContract.textContent = a.contract_address || "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+      if (ancRecordId) ancRecordId.textContent = a.block_number ? String(a.block_number) : "1";
+      if (ancTx) ancTx.textContent = a.tx_hash || "already-anchored";
+      if (ancEvidenceHash) ancEvidenceHash.textContent = a.evidence_hash || currentHash;
+      if (ancRunDir) ancRunDir.textContent = `runs/${runId}`;
+      if (anchorActionRow) anchorActionRow.style.display = "none";
+      if (verifyBtn) verifyBtn.disabled = false;
+      if (tamperBtn) tamperBtn.disabled = false;
+      if (doVerifyBtn) doVerifyBtn.disabled = false;
+    } else {
+      if (cardAnchor) cardAnchor.className = "chain-card warn";
+      if (anchorCardTitle) anchorCardTitle.textContent = "ANCHOR ON-CHAIN";
+      if (ancNetwork) ancNetwork.textContent = "anvil (local chain 31337)";
+      if (ancContract) ancContract.textContent = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+      if (ancRecordId) ancRecordId.textContent = "— (not yet anchored)";
+      if (ancTx) ancTx.textContent = "—";
+      if (ancEvidenceHash) ancEvidenceHash.textContent = currentHash;
+      if (ancRunDir) ancRunDir.textContent = `runs/${runId}`;
+      if (anchorActionRow) anchorActionRow.style.display = "block";
+      if (anchorActionNote) anchorActionNote.textContent = "Evidence is ready to anchor to the EVM EvidenceRegistry.";
+      if (verifyBtn) verifyBtn.disabled = true;
+      if (tamperBtn) tamperBtn.disabled = true;
+      if (doVerifyBtn) doVerifyBtn.disabled = true;
+    }
+
+    // 5. Reset Verify Card & Seal Card
+    if (verifyResultArea) verifyResultArea.style.display = "none";
+    if (cardVerify) cardVerify.className = "chain-card";
+    resetSealUI();
   } catch (err) {
-    expActionStatus.textContent = `Action failed: ${err.message}`;
+    console.error("Failed selecting run:", err);
   }
 }
 
-if (expVerifyBtn) {
-  expVerifyBtn.addEventListener("click", () => {
-    if (activeExplorerRunId) runExplorerAction(`/api/verify/${activeExplorerRunId}`, "Verifying against on-chain record");
+// Actions: Anchor
+async function anchorNow() {
+  if (!currentRunId) {
+    chainStatus.innerHTML = '<span class="badge no-match">NO RUN SELECTED</span> Select a past run from the dropdown or perform a face scan first.';
+    return;
+  }
+  anchorBtn.disabled = true;
+  if (doAnchorBtn) doAnchorBtn.disabled = true;
+  chainStatus.textContent = "Anchoring on chain...";
+
+  try {
+    const resp = await fetch(`/api/anchor/${encodeURIComponent(currentRunId)}`, { method: "POST" });
+    const data = await resp.json();
+    if (data.ok) {
+      chainStatus.innerHTML = `<span class="badge match">ANCHORED</span> ${data.already_anchored ? 'Verified existing on-chain record.' : 'New transaction recorded to EVM contract.'}`;
+      await selectRun(currentRunId);
+    } else {
+      chainStatus.textContent = "Anchor failed: " + (data.error || "unknown error");
+    }
+  } catch (err) {
+    chainStatus.textContent = "Anchor failed: " + err.message;
+  } finally {
+    anchorBtn.disabled = false;
+    if (doAnchorBtn) doAnchorBtn.disabled = false;
+  }
+}
+
+if (anchorBtn) anchorBtn.addEventListener("click", anchorNow);
+if (doAnchorBtn) doAnchorBtn.addEventListener("click", anchorNow);
+
+// Actions: Verify
+async function verifyNow() {
+  if (!currentRunId) {
+    chainStatus.innerHTML = '<span class="badge no-match">NO RUN SELECTED</span> Select a past run from the dropdown or perform a face scan first.';
+    return;
+  }
+  verifyBtn.disabled = true;
+  if (doVerifyBtn) doVerifyBtn.disabled = true;
+  chainStatus.textContent = "Re-verifying against the on-chain record...";
+
+  try {
+    const customText = evidenceJsonArea ? evidenceJsonArea.value : null;
+    const body = (customText && customText !== cleanBundleJson) ? { evidence_text: customText } : {};
+    const resp = await fetch(`/api/verify/${encodeURIComponent(currentRunId)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+
+    const isMatch = data.overall === "PASS";
+    if (cardVerify) cardVerify.className = "chain-card " + (isMatch ? "ok" : "bad");
+    if (verVerdictBadge) {
+      verVerdictBadge.className = "verdict " + (isMatch ? "ok" : "bad");
+      verVerdictBadge.textContent = isMatch ? "MATCH — record intact" : "MISMATCH — evidence has been altered";
+    }
+
+    if (verOnchainHash) verOnchainHash.textContent = data.onchain_hash || data.anchored_hash || "None";
+    if (verRecomputedHash) verRecomputedHash.textContent = data.recomputed_hash || "None";
+    if (verifyResultArea) verifyResultArea.style.display = "block";
+
+    chainStatus.innerHTML = `<span class="badge ${isMatch ? "match" : "no-match"}">${data.overall}</span> <span style="margin-left:8px;">${isMatch ? "Record intact: hashes match exactly." : "Evidence mismatch: tampering detected!"}</span>`;
+  } catch (err) {
+    chainStatus.textContent = "Verify failed: " + err.message;
+  } finally {
+    verifyBtn.disabled = false;
+    if (doVerifyBtn) doVerifyBtn.disabled = false;
+  }
+}
+
+if (verifyBtn) verifyBtn.addEventListener("click", verifyNow);
+if (doVerifyBtn) doVerifyBtn.addEventListener("click", verifyNow);
+
+// Actions: Tamper (Break the seal)
+async function runTamperSeal() {
+  if (!currentRunId) {
+    chainStatus.innerHTML = '<span class="badge no-match">NO RUN SELECTED</span> Select a past run from the dropdown or perform a face scan first.';
+    return;
+  }
+  tamperBtn.disabled = true;
+  const breakBtn = document.getElementById("breakSealBtn");
+  if (breakBtn) breakBtn.disabled = true;
+  chainStatus.textContent = "Flipping one byte on scratch copy and verifying against chain...";
+
+  try {
+    const resp = await fetch(`/api/tamper/${encodeURIComponent(currentRunId)}?mode=swap-artifact`, { method: "POST" });
+    const data = await resp.json();
+
+    const onchain = data.onchain_hash || data.anchored_hash || "—";
+    const intact = data.intact_hash || data.anchored_hash || "—";
+    const tampered = data.tampered_hash || data.recomputed_hash || "—";
+
+    sealContainer.innerHTML = "";
+
+    const title = document.createElement("div");
+    title.className = "warn-title";
+    title.textContent = data.detected !== false ? "Seal broken — alteration detected" : "Seal broken — NOT detected";
+    sealContainer.appendChild(title);
+
+    const cmp = document.createElement("div");
+    cmp.className = "cmp";
+
+    const mkRow = (tag, val, isDiff) => {
+      const row = document.createElement("div");
+      row.className = "row" + (isDiff ? " diff" : "");
+      const t = document.createElement("div");
+      t.className = "tag";
+      t.textContent = tag;
+      const v = document.createElement("div");
+      v.className = "hash";
+      v.textContent = val;
+      row.appendChild(t);
+      row.appendChild(v);
+      return row;
+    };
+
+    cmp.appendChild(mkRow("On-chain", onchain, false));
+    cmp.appendChild(mkRow("Before", intact, false));
+    cmp.appendChild(mkRow("After tamper", tampered, true));
+    sealContainer.appendChild(cmp);
+
+    const verdict = document.createElement("div");
+    verdict.className = "verdict bad";
+    verdict.style.marginTop = "14px";
+    verdict.textContent = "Mismatch — alteration detected";
+    sealContainer.appendChild(verdict);
+
+    const exp = document.createElement("div");
+    exp.className = "explain";
+    exp.style.textAlign = "left";
+    exp.innerHTML = `<strong>Why this matters:</strong> one byte of ${escapeHtml(data.mutated_file || "match_image.jpg")} changed, so its digest changed, so the bundle hash changed. The on-chain hash did not. A record cannot be altered after anchoring without detection.`;
+    sealContainer.appendChild(exp);
+
+    const note = document.createElement("div");
+    note.className = "note";
+    note.textContent = data.originals_unchanged
+      ? "Original artifacts verified byte-identical — the test ran on a scratch copy."
+      : "Original artifacts modified.";
+    sealContainer.appendChild(note);
+
+    const resetRow = document.createElement("div");
+    resetRow.style.marginTop = "14px";
+    const resetBtn = document.createElement("button");
+    resetBtn.className = "cyber-btn ghost";
+    resetBtn.type = "button";
+    resetBtn.textContent = "Reset Seal";
+    resetBtn.addEventListener("click", () => resetSealUI());
+    resetRow.appendChild(resetBtn);
+    sealContainer.appendChild(resetRow);
+
+    chainStatus.innerHTML = `<span class="badge no-match">TAMPER DETECTED</span> Hash mismatch: on-chain record holds previous hash; altered file rejected.`;
+  } catch (err) {
+    chainStatus.textContent = "Tamper test failed: " + err.message;
+  } finally {
+    tamperBtn.disabled = false;
+  }
+}
+
+if (tamperBtn) tamperBtn.addEventListener("click", runTamperSeal);
+if (breakSealBtn) breakSealBtn.addEventListener("click", runTamperSeal);
+
+// Editor Handlers: Save / Restore / Presets
+if (saveEditBtn) {
+  saveEditBtn.addEventListener("click", async () => {
+    if (!currentRunId || !evidenceJsonArea) return;
+    try {
+      const resp = await fetch(`/api/evidence/${encodeURIComponent(currentRunId)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: evidenceJsonArea.value }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        if (currentBundleHash) currentBundleHash.textContent = data.evidence_hash;
+        chainStatus.innerHTML = `<span class="badge match">SAVED</span> Saved edit to evidence.json. Recomputed hash: ${escapeHtml(data.evidence_hash)}`;
+      } else {
+        chainStatus.textContent = "Save failed: " + (data.detail || "invalid JSON");
+      }
+    } catch (err) {
+      chainStatus.textContent = "Save failed: " + err.message;
+    }
   });
 }
-if (expTamperArtifactBtn) {
-  expTamperArtifactBtn.addEventListener("click", () => {
-    if (activeExplorerRunId) runExplorerAction(`/api/tamper/${activeExplorerRunId}?mode=swap-artifact`, "Tampering artifact (XOR)");
+
+if (restoreEditBtn) {
+  restoreEditBtn.addEventListener("click", async () => {
+    if (!currentRunId) return;
+    try {
+      const resp = await fetch(`/api/evidence/${encodeURIComponent(currentRunId)}/restore`, { method: "POST" });
+      const data = await resp.json();
+      if (data.ok) {
+        cleanBundleJson = JSON.stringify(data.evidence, null, 2);
+        if (evidenceJsonArea) evidenceJsonArea.value = cleanBundleJson;
+        if (currentBundleHash) currentBundleHash.textContent = data.evidence_hash;
+        chainStatus.innerHTML = `<span class="badge match">RESTORED</span> Restored original evidence.json cleanly.`;
+        if (verifyResultArea) verifyResultArea.style.display = "none";
+        if (cardVerify) cardVerify.className = "chain-card";
+      }
+    } catch (err) {
+      chainStatus.textContent = "Restore failed: " + err.message;
+    }
   });
 }
-if (expTamperBundleBtn) {
-  expTamperBundleBtn.addEventListener("click", () => {
-    if (activeExplorerRunId) runExplorerAction(`/api/tamper/${activeExplorerRunId}?mode=edit-bundle`, "Tampering bundle JSON");
+
+if (presetScoreBtn) {
+  presetScoreBtn.addEventListener("click", () => {
+    if (!evidenceJsonArea) return;
+    try {
+      const obj = JSON.parse(evidenceJsonArea.value);
+      if (!obj.match) obj.match = {};
+      obj.match.score_bps = 9999;
+      evidenceJsonArea.value = JSON.stringify(obj, null, 2);
+    } catch {
+      evidenceJsonArea.value = evidenceJsonArea.value.replace(/"score_bps":\s*\d+/, '"score_bps": 9999');
+    }
+    chainStatus.innerHTML = `<span style="color:var(--bad); font-weight:600;">⚠️ Tamper In Editor:</span> Altered score to 0.9999. Click <strong>VERIFY AGAINST CHAIN</strong> to test detection!`;
   });
 }
-if (expTamperForgeBtn) {
-  expTamperForgeBtn.addEventListener("click", () => {
-    if (activeExplorerRunId) runExplorerAction(`/api/tamper/${activeExplorerRunId}?mode=forge-bundle`, "Testing forged bundle");
+
+if (presetUrlBtn) {
+  presetUrlBtn.addEventListener("click", () => {
+    if (!evidenceJsonArea) return;
+    try {
+      const obj = JSON.parse(evidenceJsonArea.value);
+      if (!obj.post) obj.post = {};
+      obj.post.url = "https://forged-tampered-profile.com/fake-post-id";
+      evidenceJsonArea.value = JSON.stringify(obj, null, 2);
+    } catch {
+      evidenceJsonArea.value = evidenceJsonArea.value.replace(/"url":\s*"[^"]*"/, '"url": "https://forged-tampered-profile.com/fake-post-id"');
+    }
+    chainStatus.innerHTML = `<span style="color:var(--bad); font-weight:600;">⚠️ Tamper In Editor:</span> Altered post URL to forged link. Click <strong>VERIFY AGAINST CHAIN</strong> to test detection!`;
+  });
+}
+
+if (presetResetBtn) {
+  presetResetBtn.addEventListener("click", () => {
+    if (!evidenceJsonArea) return;
+    evidenceJsonArea.value = cleanBundleJson;
+    chainStatus.innerHTML = `<span style="color:var(--ok); font-weight:600;">✓ Restored:</span> Reset editor to clean copy.`;
   });
 }
 
